@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Arc Stablecoin DApp"
+version = "1.0.0"
+id = "artifacts/arc-dapp"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22967
+
+[services.development]
+run = "pnpm --filter @workspace/arc-dapp run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/arc-dapp", "run", "build" ]
+publicDir = "artifacts/arc-dapp/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22967"
+BASE_PATH = "/"

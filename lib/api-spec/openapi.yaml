@@ -3,13 +3,24 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Arc Stablecoin DApp API — Conditional Escrow, Payroll Vesting, Cross-chain Transfers
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: escrow
+    description: Conditional escrow with onchain dispute and automatic release
+  - name: vesting
+    description: Programmable payroll and vesting in USDC or EURC
+  - name: crosschain
+    description: Cross-chain conditional transfers via Circle CCTP v2
+  - name: dashboard
+    description: Dashboard stats and activity feed
+  - name: cctp
+    description: Circle CCTP attestation proxy
+
 paths:
   /healthz:
     get:
@@ -24,6 +35,344 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /escrows:
+    get:
+      operationId: listEscrows
+      tags: [escrow]
+      summary: List escrows
+      description: Returns all escrow contracts, optionally filtered by wallet address
+      parameters:
+        - in: query
+          name: address
+          schema:
+            type: string
+          description: Filter by depositor or beneficiary address
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, disputed, released, resolved]
+          description: Filter by escrow status
+      responses:
+        "200":
+          description: List of escrows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Escrow"
+
+    post:
+      operationId: createEscrow
+      tags: [escrow]
+      summary: Record a new escrow
+      description: Records a new escrow after it is deployed onchain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EscrowInput"
+      responses:
+        "201":
+          description: Escrow created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Escrow"
+        "400":
+          description: Invalid input
+
+  /escrows/{id}:
+    get:
+      operationId: getEscrow
+      tags: [escrow]
+      summary: Get escrow by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Escrow details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Escrow"
+        "404":
+          description: Not found
+
+  /escrows/{id}/dispute:
+    post:
+      operationId: disputeEscrow
+      tags: [escrow]
+      summary: Raise a dispute on escrow
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EscrowDisputeInput"
+      responses:
+        "200":
+          description: Dispute recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Escrow"
+
+  /escrows/{id}/release:
+    post:
+      operationId: releaseEscrow
+      tags: [escrow]
+      summary: Release escrow funds
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EscrowReleaseInput"
+      responses:
+        "200":
+          description: Escrow released
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Escrow"
+
+  /vesting:
+    get:
+      operationId: listVestingSchedules
+      tags: [vesting]
+      summary: List vesting schedules
+      parameters:
+        - in: query
+          name: address
+          schema:
+            type: string
+          description: Filter by employer or beneficiary address
+        - in: query
+          name: token
+          schema:
+            type: string
+            enum: [USDC, EURC]
+          description: Filter by token
+      responses:
+        "200":
+          description: List of vesting schedules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VestingSchedule"
+
+    post:
+      operationId: createVestingSchedule
+      tags: [vesting]
+      summary: Create a vesting schedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VestingScheduleInput"
+      responses:
+        "201":
+          description: Vesting schedule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VestingSchedule"
+
+  /vesting/{id}:
+    get:
+      operationId: getVestingSchedule
+      tags: [vesting]
+      summary: Get vesting schedule by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Vesting schedule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VestingSchedule"
+        "404":
+          description: Not found
+
+  /vesting/{id}/claim:
+    post:
+      operationId: claimVesting
+      tags: [vesting]
+      summary: Record a vesting claim
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VestingClaimInput"
+      responses:
+        "200":
+          description: Claim recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VestingSchedule"
+
+  /crosschain:
+    get:
+      operationId: listCrosschainTransfers
+      tags: [crosschain]
+      summary: List cross-chain transfers
+      parameters:
+        - in: query
+          name: address
+          schema:
+            type: string
+          description: Filter by sender or recipient address
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, attesting, minting, complete, failed]
+      responses:
+        "200":
+          description: List of cross-chain transfers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CrosschainTransfer"
+
+    post:
+      operationId: createCrosschainTransfer
+      tags: [crosschain]
+      summary: Initiate a cross-chain transfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrosschainTransferInput"
+      responses:
+        "201":
+          description: Transfer initiated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrosschainTransfer"
+
+  /crosschain/{id}:
+    get:
+      operationId: getCrosschainTransfer
+      tags: [crosschain]
+      summary: Get cross-chain transfer by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Cross-chain transfer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrosschainTransfer"
+        "404":
+          description: Not found
+
+  /cctp/attestation/{txHash}:
+    get:
+      operationId: getCctpAttestation
+      tags: [cctp]
+      summary: Get Circle CCTP attestation for a burn transaction
+      description: Proxies to Circle IRIS API to retrieve attestation needed for CCTP mint. Defaults to Arc Testnet as source chain.
+      parameters:
+        - in: path
+          name: txHash
+          required: true
+          schema:
+            type: string
+          description: Source chain burn transaction hash
+      responses:
+        "200":
+          description: Attestation data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CctpAttestation"
+        "202":
+          description: Attestation still pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CctpAttestation"
+
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get dashboard statistics
+      responses:
+        "200":
+          description: Dashboard statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /dashboard/activity:
+    get:
+      operationId: getDashboardActivity
+      tags: [dashboard]
+      summary: Get recent activity feed
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +383,327 @@ components:
       required:
         - status
 
+    Escrow:
+      type: object
+      required: [id, depositor, beneficiary, arbiter, token, amount, releaseTime, status, contractAddress, txHash, chainId, createdAt]
+      properties:
+        id:
+          type: integer
+        depositor:
+          type: string
+          description: Depositor wallet address
+        beneficiary:
+          type: string
+          description: Beneficiary wallet address
+        arbiter:
+          type: string
+          description: Arbiter wallet address for disputes
+        token:
+          type: string
+          enum: [USDC, EURC]
+        amount:
+          type: string
+          description: Amount in token units (6 decimals for USDC/EURC)
+        releaseTime:
+          type: integer
+          description: Unix timestamp for automatic release
+        status:
+          type: string
+          enum: [active, disputed, released, resolved]
+        conditionType:
+          type: ["string", "null"]
+          enum: [time_based, milestone, oracle, null]
+        conditionData:
+          type: ["string", "null"]
+          description: JSON-encoded condition parameters
+        contractAddress:
+          type: string
+          description: Deployed escrow contract address
+        txHash:
+          type: string
+          description: Deployment transaction hash
+        disputeTxHash:
+          type: ["string", "null"]
+        releaseTxHash:
+          type: ["string", "null"]
+        disputeReason:
+          type: ["string", "null"]
+        chainId:
+          type: integer
+          description: Chain ID (5042002 for Arc Testnet)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    EscrowInput:
+      type: object
+      required: [depositor, beneficiary, arbiter, token, amount, releaseTime, contractAddress, txHash]
+      properties:
+        depositor:
+          type: string
+        beneficiary:
+          type: string
+        arbiter:
+          type: string
+        token:
+          type: string
+          enum: [USDC, EURC]
+        amount:
+          type: string
+        releaseTime:
+          type: integer
+        conditionType:
+          type: string
+          enum: [time_based, milestone, oracle]
+        conditionData:
+          type: string
+        contractAddress:
+          type: string
+        txHash:
+          type: string
+        chainId:
+          type: integer
+
+    EscrowDisputeInput:
+      type: object
+      required: [txHash, reason]
+      properties:
+        txHash:
+          type: string
+        reason:
+          type: string
+
+    EscrowReleaseInput:
+      type: object
+      required: [txHash, resolution]
+      properties:
+        txHash:
+          type: string
+        resolution:
+          type: string
+          enum: [beneficiary, depositor]
+
+    VestingSchedule:
+      type: object
+      required: [id, employer, beneficiary, token, totalAmount, cliffDuration, vestingDuration, startTime, amountClaimed, contractAddress, txHash, chainId, createdAt]
+      properties:
+        id:
+          type: integer
+        employer:
+          type: string
+          description: Employer wallet address
+        beneficiary:
+          type: string
+          description: Beneficiary wallet address
+        token:
+          type: string
+          enum: [USDC, EURC]
+        totalAmount:
+          type: string
+          description: Total vesting amount
+        cliffDuration:
+          type: integer
+          description: Cliff duration in seconds
+        vestingDuration:
+          type: integer
+          description: Total vesting duration in seconds
+        startTime:
+          type: integer
+          description: Vesting start unix timestamp
+        amountClaimed:
+          type: string
+          description: Amount claimed so far
+        claimTxHash:
+          type: ["string", "null"]
+        contractAddress:
+          type: string
+        txHash:
+          type: string
+        chainId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    VestingScheduleInput:
+      type: object
+      required: [employer, beneficiary, token, totalAmount, cliffDuration, vestingDuration, startTime, contractAddress, txHash]
+      properties:
+        employer:
+          type: string
+        beneficiary:
+          type: string
+        token:
+          type: string
+          enum: [USDC, EURC]
+        totalAmount:
+          type: string
+        cliffDuration:
+          type: integer
+        vestingDuration:
+          type: integer
+        startTime:
+          type: integer
+        contractAddress:
+          type: string
+        txHash:
+          type: string
+        chainId:
+          type: integer
+
+    VestingClaimInput:
+      type: object
+      required: [txHash, amountClaimed]
+      properties:
+        txHash:
+          type: string
+        amountClaimed:
+          type: string
+
+    CrosschainTransfer:
+      type: object
+      required: [id, sender, recipient, sourceChain, destChain, token, amount, status, burnTxHash, chainId, createdAt]
+      properties:
+        id:
+          type: integer
+        sender:
+          type: string
+        recipient:
+          type: string
+        sourceChain:
+          type: string
+          description: Source chain name
+        destChain:
+          type: string
+          description: Destination chain name
+        token:
+          type: string
+          enum: [USDC, EURC]
+        amount:
+          type: string
+        status:
+          type: string
+          enum: [pending, attesting, minting, complete, failed]
+        burnTxHash:
+          type: string
+          description: CCTP burn transaction hash on source chain
+        mintTxHash:
+          type: ["string", "null"]
+          description: CCTP mint transaction hash on dest chain
+        messageHash:
+          type: ["string", "null"]
+        attestation:
+          type: ["string", "null"]
+          description: Circle IRIS attestation bytes
+        hookData:
+          type: ["string", "null"]
+          description: Encoded hook data for conditional post-transfer logic
+        sourceChainId:
+          type: integer
+        destChainId:
+          type: integer
+        chainId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CrosschainTransferInput:
+      type: object
+      required: [sender, recipient, sourceChain, destChain, token, amount, burnTxHash]
+      properties:
+        sender:
+          type: string
+        recipient:
+          type: string
+        sourceChain:
+          type: string
+        destChain:
+          type: string
+        token:
+          type: string
+          enum: [USDC, EURC]
+        amount:
+          type: string
+        burnTxHash:
+          type: string
+        messageHash:
+          type: string
+        hookData:
+          type: string
+        sourceChainId:
+          type: integer
+        destChainId:
+          type: integer
+
+    CctpAttestation:
+      type: object
+      required: [txHash, status]
+      properties:
+        txHash:
+          type: string
+        status:
+          type: string
+          enum: [pending_confirmations, complete, failed]
+        messageHash:
+          type: ["string", "null"]
+        attestation:
+          type: ["string", "null"]
+          description: Hex-encoded attestation bytes from Circle IRIS
+
+    DashboardStats:
+      type: object
+      required: [totalEscrows, activeEscrows, disputedEscrows, releasedEscrows, totalVestingSchedules, totalCrosschainTransfers, totalUsdcLocked, totalEurcLocked, completedCrosschainVolume]
+      properties:
+        totalEscrows:
+          type: integer
+        activeEscrows:
+          type: integer
+        disputedEscrows:
+          type: integer
+        releasedEscrows:
+          type: integer
+        totalVestingSchedules:
+          type: integer
+        totalCrosschainTransfers:
+          type: integer
+        totalUsdcLocked:
+          type: string
+          description: Total USDC locked in active escrows + vesting
+        totalEurcLocked:
+          type: string
+          description: Total EURC locked
+        completedCrosschainVolume:
+          type: string
+          description: Total USDC volume completed cross-chain
+
+    ActivityItem:
+      type: object
+      required: [id, type, description, txHash, chainId, timestamp]
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [escrow_created, escrow_disputed, escrow_released, vesting_created, vesting_claimed, crosschain_initiated, crosschain_complete]
+        description:
+          type: string
+        txHash:
+          type: string
+        chainId:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+        metadata:
+          type: ["string", "null"]
+          description: JSON-encoded additional metadata
