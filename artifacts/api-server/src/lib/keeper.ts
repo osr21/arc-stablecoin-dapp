@@ -20,13 +20,18 @@ const ESCROW_ABI = parseAbi([
   "function autoRelease(uint256 id)",
 ]);
 
-async function getOnChainId(
-  txHash: string,
+async function resolveOnChainId(
+  escrow: { id: number; txHash: string; onChainId: number | null },
   publicClient: ReturnType<typeof createPublicClient>,
 ): Promise<bigint | null> {
+  // Prefer the stored DB value — avoids an RPC round-trip
+  if (escrow.onChainId !== null && escrow.onChainId !== undefined) {
+    return BigInt(escrow.onChainId);
+  }
+
   try {
     const receipt = await publicClient.getTransactionReceipt({
-      hash: txHash as `0x${string}`,
+      hash: escrow.txHash as `0x${string}`,
     });
     for (const log of receipt.logs) {
       try {
@@ -36,14 +41,20 @@ async function getOnChainId(
           topics: log.topics as any,
         });
         if (decoded.eventName === "EscrowCreated") {
-          return (decoded.args as { id: bigint }).id;
+          const onChainId = (decoded.args as { id: bigint }).id;
+          // Persist the ID so future ticks skip the RPC call
+          await db
+            .update(escrowsTable)
+            .set({ onChainId: Number(onChainId) })
+            .where(eq(escrowsTable.id, escrow.id));
+          return onChainId;
         }
       } catch {
         // not this log — try next
       }
     }
   } catch (err) {
-    logger.warn({ err, txHash }, "keeper: failed to fetch tx receipt");
+    logger.warn({ err, txHash: escrow.txHash }, "keeper: failed to fetch tx receipt");
   }
   return null;
 }
@@ -65,7 +76,7 @@ async function tick(
 
   for (const escrow of expired) {
     try {
-      const onChainId = await getOnChainId(escrow.txHash, publicClient);
+      const onChainId = await resolveOnChainId(escrow, publicClient);
 
       if (onChainId === null) {
         logger.warn({ escrowId: escrow.id }, "keeper: could not resolve on-chain id — skipping");

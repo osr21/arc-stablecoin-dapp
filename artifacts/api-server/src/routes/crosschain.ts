@@ -9,6 +9,8 @@ import {
 
 const router = Router();
 
+const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
+
 router.get("/", async (req, res) => {
   const query = ListCrosschainTransfersQueryParams.safeParse(req.query);
   if (!query.success) {
@@ -48,6 +50,10 @@ router.post("/", async (req, res) => {
   const body = CreateCrosschainTransferBody.safeParse(req.body);
   if (!body.success) {
     return res.status(400).json({ error: "Invalid body", details: body.error.issues });
+  }
+
+  if (!TX_HASH_RE.test(body.data.burnTxHash)) {
+    return res.status(400).json({ error: "Invalid burnTxHash format" });
   }
 
   const [transfer] = await db

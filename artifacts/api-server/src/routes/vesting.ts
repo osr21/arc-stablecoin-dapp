@@ -11,6 +11,8 @@ import {
 
 const router = Router();
 
+const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
+
 router.get("/", async (req, res) => {
   const query = ListVestingSchedulesQueryParams.safeParse(req.query);
   if (!query.success) {
@@ -50,6 +52,10 @@ router.post("/", async (req, res) => {
   const body = CreateVestingScheduleBody.safeParse(req.body);
   if (!body.success) {
     return res.status(400).json({ error: "Invalid body", details: body.error.issues });
+  }
+
+  if (!TX_HASH_RE.test(body.data.txHash)) {
+    return res.status(400).json({ error: "Invalid txHash format" });
   }
 
   const [schedule] = await db
@@ -108,6 +114,45 @@ router.post("/:id/claim", async (req, res) => {
     return res.status(400).json({ error: "Invalid input" });
   }
 
+  if (!TX_HASH_RE.test(body.data.txHash)) {
+    return res.status(400).json({ error: "Invalid txHash format" });
+  }
+
+  const [existing] = await db
+    .select()
+    .from(vestingSchedulesTable)
+    .where(eq(vestingSchedulesTable.id, params.data.id));
+
+  if (!existing) return res.status(404).json({ error: "Not found" });
+
+  let newClaimed: bigint;
+  let currentClaimed: bigint;
+  try {
+    newClaimed = BigInt(body.data.amountClaimed);
+    currentClaimed = BigInt(existing.amountClaimed);
+  } catch {
+    return res.status(400).json({ error: "Invalid amountClaimed: must be a numeric string" });
+  }
+
+  if (newClaimed <= currentClaimed) {
+    return res.status(409).json({
+      error: `amountClaimed (${newClaimed}) must exceed current value (${currentClaimed})`,
+    });
+  }
+
+  let totalAmount: bigint;
+  try {
+    totalAmount = BigInt(existing.totalAmount);
+  } catch {
+    return res.status(500).json({ error: "Schedule has invalid totalAmount in database" });
+  }
+
+  if (newClaimed > totalAmount) {
+    return res.status(409).json({
+      error: `amountClaimed (${newClaimed}) exceeds totalAmount (${totalAmount})`,
+    });
+  }
+
   const [schedule] = await db
     .update(vestingSchedulesTable)
     .set({
@@ -116,8 +161,6 @@ router.post("/:id/claim", async (req, res) => {
     })
     .where(eq(vestingSchedulesTable.id, params.data.id))
     .returning();
-
-  if (!schedule) return res.status(404).json({ error: "Not found" });
 
   await db.insert(activityLogTable).values({
     type: "vesting_claimed",

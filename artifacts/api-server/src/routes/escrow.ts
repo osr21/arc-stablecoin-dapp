@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, escrowsTable, activityLogTable } from "@workspace/db";
-import { eq, or } from "drizzle-orm";
+import { eq, or, and } from "drizzle-orm";
 import {
   ListEscrowsQueryParams,
   CreateEscrowBody,
@@ -12,6 +12,8 @@ import {
 } from "@workspace/api-zod";
 
 const router = Router();
+
+const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
 
 router.get("/", async (req, res) => {
   const query = ListEscrowsQueryParams.safeParse(req.query);
@@ -52,6 +54,10 @@ router.post("/", async (req, res) => {
   const body = CreateEscrowBody.safeParse(req.body);
   if (!body.success) {
     return res.status(400).json({ error: "Invalid body", details: body.error.issues });
+  }
+
+  if (!TX_HASH_RE.test(body.data.txHash)) {
+    return res.status(400).json({ error: "Invalid txHash format" });
   }
 
   const [escrow] = await db
@@ -114,6 +120,10 @@ router.post("/:id/dispute", async (req, res) => {
     return res.status(400).json({ error: "Invalid input" });
   }
 
+  if (!TX_HASH_RE.test(body.data.txHash)) {
+    return res.status(400).json({ error: "Invalid txHash format" });
+  }
+
   const [escrow] = await db
     .update(escrowsTable)
     .set({
@@ -121,10 +131,19 @@ router.post("/:id/dispute", async (req, res) => {
       disputeTxHash: body.data.txHash,
       disputeReason: body.data.reason,
     })
-    .where(eq(escrowsTable.id, params.data.id))
+    .where(
+      and(
+        eq(escrowsTable.id, params.data.id),
+        eq(escrowsTable.status, "active")
+      )
+    )
     .returning();
 
-  if (!escrow) return res.status(404).json({ error: "Not found" });
+  if (!escrow) {
+    const [existing] = await db.select().from(escrowsTable).where(eq(escrowsTable.id, params.data.id));
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    return res.status(409).json({ error: `Cannot dispute an escrow with status '${existing.status}'` });
+  }
 
   await db.insert(activityLogTable).values({
     type: "escrow_disputed",
@@ -147,7 +166,12 @@ router.post("/:id/release", async (req, res) => {
     return res.status(400).json({ error: "Invalid input" });
   }
 
+  if (!TX_HASH_RE.test(body.data.txHash)) {
+    return res.status(400).json({ error: "Invalid txHash format" });
+  }
+
   const newStatus = body.data.resolution === "beneficiary" ? "released" : "resolved";
+  const allowedFromStatus = body.data.resolution === "beneficiary" ? "active" : "disputed";
 
   const [escrow] = await db
     .update(escrowsTable)
@@ -155,10 +179,19 @@ router.post("/:id/release", async (req, res) => {
       status: newStatus,
       releaseTxHash: body.data.txHash,
     })
-    .where(eq(escrowsTable.id, params.data.id))
+    .where(
+      and(
+        eq(escrowsTable.id, params.data.id),
+        eq(escrowsTable.status, allowedFromStatus)
+      )
+    )
     .returning();
 
-  if (!escrow) return res.status(404).json({ error: "Not found" });
+  if (!escrow) {
+    const [existing] = await db.select().from(escrowsTable).where(eq(escrowsTable.id, params.data.id));
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    return res.status(409).json({ error: `Cannot release/resolve an escrow with status '${existing.status}'` });
+  }
 
   await db.insert(activityLogTable).values({
     type: "escrow_released",

@@ -1,1 +1,2 @@
 - [Arc Testnet Deployed Contracts](arc-deployed-contracts.md) — live contract addresses on Arc Testnet (Chain ID 5042002), deployed via Foundry
+- [API Security Hardening](api-security-hardening.md) — status-transition guards, txHash format validation, rate limiting, body size limits applied to all mutation routes

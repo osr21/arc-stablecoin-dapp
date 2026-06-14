@@ -5,6 +5,10 @@ import { GetDashboardActivityQueryParams } from "@workspace/api-zod";
 
 const router = Router();
 
+function safeBigInt(val: string): bigint {
+  try { return BigInt(val); } catch { return BigInt(0); }
+}
+
 router.get("/stats", async (_req, res) => {
   const [escrows, vestingSchedules, crosschainTransfers] = await Promise.all([
     db.select().from(escrowsTable),
@@ -23,18 +27,26 @@ router.get("/stats", async (_req, res) => {
   const eurcVesting = vestingSchedules.filter((v) => v.token === "EURC");
 
   const totalUsdcLocked = [
-    ...usdcEscrows.map((e) => BigInt(e.amount)),
-    ...usdcVesting.map((v) => BigInt(v.totalAmount) - BigInt(v.amountClaimed)),
+    ...usdcEscrows.map((e) => safeBigInt(e.amount)),
+    ...usdcVesting.map((v) => {
+      const total = safeBigInt(v.totalAmount);
+      const claimed = safeBigInt(v.amountClaimed);
+      return total > claimed ? total - claimed : BigInt(0);
+    }),
   ].reduce((a, b) => a + b, BigInt(0)).toString();
 
   const totalEurcLocked = [
-    ...eurcEscrows.map((e) => BigInt(e.amount)),
-    ...eurcVesting.map((v) => BigInt(v.totalAmount) - BigInt(v.amountClaimed)),
+    ...eurcEscrows.map((e) => safeBigInt(e.amount)),
+    ...eurcVesting.map((v) => {
+      const total = safeBigInt(v.totalAmount);
+      const claimed = safeBigInt(v.amountClaimed);
+      return total > claimed ? total - claimed : BigInt(0);
+    }),
   ].reduce((a, b) => a + b, BigInt(0)).toString();
 
   const completedTransfers = crosschainTransfers.filter((t) => t.status === "complete");
   const completedCrosschainVolume = completedTransfers
-    .map((t) => BigInt(t.amount))
+    .map((t) => safeBigInt(t.amount))
     .reduce((a, b) => a + b, BigInt(0))
     .toString();
 
