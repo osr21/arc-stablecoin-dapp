@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, ShieldCheck, Clock, ArrowLeftRight, FileCode2, LayoutDashboard, Wallet, Component } from "lucide-react";
+import { Activity, ShieldCheck, Clock, ArrowLeftRight, FileCode2, LayoutDashboard, Wallet, Component, AlertTriangle } from "lucide-react";
 import { useWallet } from "../lib/wallet";
 import { Button } from "./ui/button";
 
@@ -14,7 +14,7 @@ const navItems = [
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-  const { address, isConnected, connect, disconnect } = useWallet();
+  const { address, isConnected, connect, disconnect, isConnecting, isWrongNetwork, switchToArc } = useWallet();
 
   const truncateAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
@@ -64,15 +64,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {navItems.find(i => location === i.href || (i.href !== "/" && location.startsWith(i.href)))?.label || "Arc Testnet"}
             </h1>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            {isConnected && isWrongNetwork && (
+              <Button variant="destructive" size="sm" onClick={switchToArc} className="text-xs gap-1">
+                <AlertTriangle className="w-3 h-3" /> Wrong Network
+              </Button>
+            )}
             {isConnected ? (
               <Button variant="outline" size="sm" onClick={disconnect} className="font-mono text-xs font-normal">
                 <Wallet className="w-3 h-3 mr-2" />
                 {truncateAddress(address!)}
               </Button>
             ) : (
-              <Button size="sm" onClick={connect} className="font-mono text-xs">
-                Connect Wallet
+              <Button size="sm" onClick={connect} disabled={isConnecting} className="font-mono text-xs">
+                {isConnecting ? "Connecting..." : "Connect Wallet"}
               </Button>
             )}
           </div>

@@ -18,10 +18,7 @@ pragma solidity ^0.8.20;
  * EURC:  0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a
  */
 
-interface IERC20 {
-    function transferFrom(address from, address to, uint256 amount) external returns (bool);
-    function transfer(address to, uint256 amount) external returns (bool);
-}
+import "./IERC20.sol";
 
 contract PayrollVesting {
     struct Schedule {

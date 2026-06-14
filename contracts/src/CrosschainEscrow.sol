@@ -22,11 +22,7 @@ pragma solidity ^0.8.20;
  *   MessageTransmitterV2:0x81D40F21F12A8F0E3252Bccb954D722d4c464B64
  */
 
-interface IERC20 {
-    function approve(address spender, uint256 amount) external returns (bool);
-    function transferFrom(address from, address to, uint256 amount) external returns (bool);
-    function transfer(address to, uint256 amount) external returns (bool);
-}
+import "./IERC20.sol";
 
 interface ITokenMessengerV2 {
     /**
