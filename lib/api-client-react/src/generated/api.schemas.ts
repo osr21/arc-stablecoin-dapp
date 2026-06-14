@@ -72,6 +72,11 @@ export interface Escrow {
   disputeReason?: string | null;
   /** Chain ID (5042002 for Arc Testnet) */
   chainId: number;
+  /**
+     * On-chain escrow ID from the contract (used for release/autoRelease)
+     * @nullable
+     */
+  onChainId?: number | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -105,6 +110,7 @@ export interface EscrowInput {
   contractAddress: string;
   txHash: string;
   chainId?: number;
+  onChainId?: number;
 }
 
 export interface EscrowDisputeInput {

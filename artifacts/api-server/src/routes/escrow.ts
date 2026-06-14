@@ -69,6 +69,7 @@ router.post("/", async (req, res) => {
       contractAddress: body.data.contractAddress,
       txHash: body.data.txHash,
       chainId: body.data.chainId ?? 5042002,
+      onChainId: body.data.onChainId ?? null,
     })
     .returning();
 

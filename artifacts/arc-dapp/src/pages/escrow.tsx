@@ -15,7 +15,21 @@ import {
   CONTRACT_ADDRESSES, CONDITIONAL_ESCROW_ABI, ERC20_ABI,
   parseToken, ARC_TESTNET,
 } from "../lib/contracts";
-import type { Address } from "viem";
+import { decodeEventLog, parseAbi, type Address } from "viem";
+
+const ESCROW_EVENTS_ABI = parseAbi([
+  "event EscrowCreated(uint256 indexed id, address depositor, address beneficiary, address arbiter, address token, uint256 amount, uint256 releaseTime, string conditionType)",
+]);
+
+function parseOnChainId(receipt: { logs: readonly { address: Address; topics: readonly `0x${string}`[]; data: `0x${string}` }[] }): number | null {
+  for (const log of receipt.logs) {
+    try {
+      const decoded = decodeEventLog({ abi: ESCROW_EVENTS_ABI, data: log.data, topics: log.topics as any });
+      if (decoded.eventName === "EscrowCreated") return Number((decoded.args as { id: bigint }).id);
+    } catch { /* not this log */ }
+  }
+  return null;
+}
 
 function statusVariant(status: string) {
   if (status === "active")   return "default";
@@ -86,9 +100,10 @@ export default function Escrow() {
         chain: ARC_TESTNET as any,
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash: createTx });
+      const onChainId = parseOnChainId(receipt);
 
       // 3. Record in DB
-      createEscrow.mutate({
+      await createEscrow.mutateAsync({
         data: {
           depositor:       address,
           beneficiary:     formData.beneficiary,
@@ -100,6 +115,7 @@ export default function Escrow() {
           contractAddress: CONTRACT_ADDRESSES.CONDITIONAL_ESCROW,
           txHash:          createTx,
           chainId:         ARC_TESTNET.id,
+          ...(onChainId !== null ? { onChainId } : {}),
         },
       });
     } catch (err: any) {
@@ -110,16 +126,17 @@ export default function Escrow() {
     }
   };
 
-  const handleRelease = async (id: number, contractEscrowId?: number) => {
+  const handleRelease = async (id: number, onChainId?: number | null) => {
     if (!address || !walletClient) return;
     if (isWrongNetwork) { await switchToArc(); return; }
     setTxPending(true);
     try {
+      const contractId = onChainId != null ? BigInt(onChainId) : BigInt(id - 1);
       const tx = await walletClient.writeContract({
         address: CONTRACT_ADDRESSES.CONDITIONAL_ESCROW,
         abi: CONDITIONAL_ESCROW_ABI,
         functionName: "release",
-        args: [BigInt(id - 1)],
+        args: [contractId],
         account: address,
         chain: ARC_TESTNET as any,
       });
@@ -232,7 +249,7 @@ export default function Escrow() {
                 </TableCell>
                 <TableCell className="text-right space-x-2">
                   {escrow.status === "active" && isConnected && (
-                    <Button variant="outline" size="sm" onClick={() => handleRelease(escrow.id)} disabled={txPending}>
+                    <Button variant="outline" size="sm" onClick={() => handleRelease(escrow.id, escrow.onChainId)} disabled={txPending}>
                       Release
                     </Button>
                   )}

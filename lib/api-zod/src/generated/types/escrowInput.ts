@@ -20,4 +20,5 @@ export interface EscrowInput {
   contractAddress: string;
   txHash: string;
   chainId?: number;
+  onChainId?: number;
 }

@@ -19,6 +19,7 @@ export const escrowsTable = pgTable("escrows", {
   releaseTxHash: text("release_tx_hash"),
   disputeReason: text("dispute_reason"),
   chainId: integer("chain_id").notNull().default(5042002),
+  onChainId: integer("on_chain_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

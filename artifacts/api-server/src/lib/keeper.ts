@@ -16,7 +16,7 @@ const ARC_CHAIN = {
 } as const;
 
 const ESCROW_ABI = parseAbi([
-  "event EscrowCreated(uint256 indexed id, address indexed depositor, address beneficiary, address arbiter, address token, uint256 amount, uint256 releaseTime, string conditionType)",
+  "event EscrowCreated(uint256 indexed id, address depositor, address beneficiary, address arbiter, address token, uint256 amount, uint256 releaseTime, string conditionType)",
   "function autoRelease(uint256 id)",
 ]);
 

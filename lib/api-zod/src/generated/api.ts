@@ -43,6 +43,7 @@ export const ListEscrowsResponseItem = zod.object({
   "releaseTxHash": zod.string().nullish(),
   "disputeReason": zod.string().nullish(),
   "chainId": zod.number().describe('Chain ID (5042002 for Arc Testnet)'),
+  "onChainId": zod.number().nullish().describe('On-chain escrow ID from the contract (used for release\/autoRelease)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional()
 })
@@ -64,7 +65,8 @@ export const CreateEscrowBody = zod.object({
   "conditionData": zod.string().optional(),
   "contractAddress": zod.string(),
   "txHash": zod.string(),
-  "chainId": zod.number().optional()
+  "chainId": zod.number().optional(),
+  "onChainId": zod.number().optional()
 })
 
 
@@ -92,6 +94,7 @@ export const GetEscrowResponse = zod.object({
   "releaseTxHash": zod.string().nullish(),
   "disputeReason": zod.string().nullish(),
   "chainId": zod.number().describe('Chain ID (5042002 for Arc Testnet)'),
+  "onChainId": zod.number().nullish().describe('On-chain escrow ID from the contract (used for release\/autoRelease)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional()
 })
@@ -126,6 +129,7 @@ export const DisputeEscrowResponse = zod.object({
   "releaseTxHash": zod.string().nullish(),
   "disputeReason": zod.string().nullish(),
   "chainId": zod.number().describe('Chain ID (5042002 for Arc Testnet)'),
+  "onChainId": zod.number().nullish().describe('On-chain escrow ID from the contract (used for release\/autoRelease)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional()
 })
@@ -160,6 +164,7 @@ export const ReleaseEscrowResponse = zod.object({
   "releaseTxHash": zod.string().nullish(),
   "disputeReason": zod.string().nullish(),
   "chainId": zod.number().describe('Chain ID (5042002 for Arc Testnet)'),
+  "onChainId": zod.number().nullish().describe('On-chain escrow ID from the contract (used for release\/autoRelease)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional()
 })

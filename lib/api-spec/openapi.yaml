@@ -431,6 +431,9 @@ components:
         chainId:
           type: integer
           description: Chain ID (5042002 for Arc Testnet)
+        onChainId:
+          type: ["integer", "null"]
+          description: On-chain escrow ID from the contract (used for release/autoRelease)
         createdAt:
           type: string
           format: date-time
@@ -465,6 +468,8 @@ components:
         txHash:
           type: string
         chainId:
+          type: integer
+        onChainId:
           type: integer
 
     EscrowDisputeInput:
