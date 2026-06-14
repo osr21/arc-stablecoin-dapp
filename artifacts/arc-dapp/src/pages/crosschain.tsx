@@ -70,7 +70,7 @@ export default function Crosschain() {
           destDomain,
           rawAmount,
           BigInt(0),     // maxFee: 0 for basic
-          1000,          // minFinalityThreshold: finalized
+          2000,          // minFinalityThreshold: Arc finalized = 2000
           "0x" as `0x${string}`,
           formData.conditionDescription,
         ],
@@ -108,10 +108,6 @@ export default function Crosschain() {
             {" · "}
             <span className="font-mono text-xs">{CONTRACT_ADDRESSES.CROSSCHAIN_ESCROW}</span>
           </p>
-          <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-0.5 text-xs text-amber-600 dark:text-amber-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-            Simulated CCTP — Circle has not yet deployed CCTP v2 on Arc Testnet. Transfers use <code className="font-mono">MockTokenMessengerV2</code> and emit canonical events; IRIS attestation is unavailable until Circle deploys.
-          </div>
         </div>
         {isConnected && isWrongNetwork && (
           <Button variant="destructive" size="sm" onClick={switchToArc}>Switch to Arc Testnet</Button>

@@ -14,12 +14,12 @@ pragma solidity ^0.8.20;
  *      - Anyone calls mintOnDestination() on the destination chain with attestation
  *      - hookData enables conditional execution on destination (e.g., only release if oracle confirms)
  *
- * Arc Testnet CCTP Domain ID: 7
+ * Arc Testnet CCTP Domain ID: 26
  * USDC on Arc: 0x3600000000000000000000000000000000000000
  *
- * CCTP v2 contracts (deterministic CREATE2 across EVM chains):
- *   TokenMessengerV2:    0x28b0b9a9F49AD9A09C9B80A4DC3C0E56f2B71406
- *   MessageTransmitterV2:0x81D40F21F12A8F0E3252Bccb954D722d4c464B64
+ * CCTP v2 contracts (Arc Testnet):
+ *   TokenMessengerV2:    0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA
+ *   MessageTransmitterV2:0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275
  */
 
 import "./IERC20.sol";
@@ -53,13 +53,13 @@ contract CrosschainEscrow {
     struct Transfer {
         address sender;
         address recipient;
-        uint32 destinationDomain;
+        uint32  destinationDomain;
         address token;
         uint256 amount;
-        bool executed;
-        uint64 cctpNonce;
-        bytes hookData;
-        string conditionDescription;
+        bool    executed;
+        uint64  cctpNonce;
+        bytes   hookData;
+        string  conditionDescription;
     }
 
     address public immutable tokenMessengerV2;
@@ -72,14 +72,14 @@ contract CrosschainEscrow {
         uint256 indexed id,
         address sender,
         address recipient,
-        uint32 destinationDomain,
+        uint32  destinationDomain,
         uint256 amount,
-        uint64 cctpNonce,
-        bytes hookData
+        uint64  cctpNonce,
+        bytes   hookData
     );
 
     /**
-     * @param _tokenMessengerV2 Circle CCTP v2 TokenMessenger address.
+     * @param _tokenMessengerV2 Circle CCTP v2 TokenMessenger address on Arc Testnet.
      * @param _usdc             USDC token address on this chain.
      */
     constructor(address _tokenMessengerV2, address _usdc) {
@@ -91,20 +91,19 @@ contract CrosschainEscrow {
      * @notice Initiate a conditional cross-chain USDC transfer via CCTP v2.
      *
      * @param recipient            Recipient address on destination chain.
-     * @param destinationDomain    CCTP domain ID (Arc=7, Eth Sepolia=0, Base Sepolia=6, Arb Sepolia=3).
+     * @param destinationDomain    CCTP domain ID (Arc=26, Eth Sepolia=0, Base Sepolia=6, Arb Sepolia=3).
      * @param amount               USDC amount (6 decimals).
-     * @param maxFee               Max fee for Circle attestation service (set to 0 for basic).
-     * @param minFinalityThreshold Finality required (1000 = finalized, 500 = fast).
+     * @param maxFee               Max fee for Circle attestation service (0 for basic).
+     * @param minFinalityThreshold Finality required (2000 = finalized on Arc).
      * @param hookData             ABI-encoded conditional hook instructions for destination.
-     *                             Example: abi.encode(conditionType, conditionParams, callTarget, callData)
      * @param conditionDescription Human-readable description of the condition.
      */
     function initiateConditionalTransfer(
         address recipient,
-        uint32 destinationDomain,
+        uint32  destinationDomain,
         uint256 amount,
         uint256 maxFee,
-        uint32 minFinalityThreshold,
+        uint32  minFinalityThreshold,
         bytes calldata hookData,
         string calldata conditionDescription
     ) external returns (uint256 id) {
@@ -114,15 +113,15 @@ contract CrosschainEscrow {
         IERC20(usdc).transferFrom(msg.sender, address(this), amount);
         IERC20(usdc).approve(tokenMessengerV2, amount);
 
-        bytes32 mintRecipient = bytes32(uint256(uint160(recipient)));
-        bytes32 destinationCaller = bytes32(0); // Anyone can mint on destination
+        bytes32 mintRecipient  = bytes32(uint256(uint160(recipient)));
+        bytes32 destCaller     = bytes32(0); // anyone can mint on destination
 
         uint64 nonce = ITokenMessengerV2(tokenMessengerV2).depositForBurnWithHook(
             amount,
             destinationDomain,
             mintRecipient,
             usdc,
-            destinationCaller,
+            destCaller,
             maxFee,
             minFinalityThreshold,
             hookData
@@ -130,14 +129,14 @@ contract CrosschainEscrow {
 
         id = nextId++;
         transfers[id] = Transfer({
-            sender: msg.sender,
-            recipient: recipient,
-            destinationDomain: destinationDomain,
-            token: usdc,
-            amount: amount,
-            executed: true,
-            cctpNonce: nonce,
-            hookData: hookData,
+            sender:               msg.sender,
+            recipient:            recipient,
+            destinationDomain:    destinationDomain,
+            token:                usdc,
+            amount:               amount,
+            executed:             true,
+            cctpNonce:            nonce,
+            hookData:             hookData,
             conditionDescription: conditionDescription
         });
 
@@ -167,7 +166,7 @@ contract CrosschainEscrow {
 
     /**
      * @notice CCTP domain IDs for reference.
-     *         Arc Testnet: 7
+     *         Arc Testnet: 26
      *         Ethereum Sepolia: 0
      *         Avalanche Fuji: 1
      *         Optimism Sepolia: 2
@@ -176,12 +175,12 @@ contract CrosschainEscrow {
      */
     function getDomainId(string calldata chainName) external pure returns (uint32) {
         bytes32 h = keccak256(bytes(chainName));
-        if (h == keccak256("arc")) return 7;
-        if (h == keccak256("ethereum-sepolia")) return 0;
-        if (h == keccak256("avalanche-fuji")) return 1;
-        if (h == keccak256("optimism-sepolia")) return 2;
-        if (h == keccak256("arbitrum-sepolia")) return 3;
-        if (h == keccak256("base-sepolia")) return 6;
+        if (h == keccak256("arc"))               return 26;
+        if (h == keccak256("ethereum-sepolia"))  return 0;
+        if (h == keccak256("avalanche-fuji"))    return 1;
+        if (h == keccak256("optimism-sepolia"))  return 2;
+        if (h == keccak256("arbitrum-sepolia"))  return 3;
+        if (h == keccak256("base-sepolia"))      return 6;
         revert("Unknown chain");
     }
 }

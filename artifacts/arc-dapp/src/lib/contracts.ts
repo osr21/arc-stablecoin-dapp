@@ -15,13 +15,13 @@ export const ARC_TESTNET = {
 } as const;
 
 export const CONTRACT_ADDRESSES = {
-  CONDITIONAL_ESCROW:  (import.meta.env.VITE_CONDITIONAL_ESCROW_ADDRESS  ?? "0xdD38D67Fe054308D56E4458fC47a43106871D874") as `0x${string}`,
-  PAYROLL_VESTING:     (import.meta.env.VITE_PAYROLL_VESTING_ADDRESS     ?? "0xd98c4F2819b26d0E346469A808Ff892E87C057B6") as `0x${string}`,
-  CROSSCHAIN_ESCROW:   (import.meta.env.VITE_CROSSCHAIN_ESCROW_ADDRESS   ?? "0xcBFc910c6bDD2c8877249E4A658A26A7009c3f8F") as `0x${string}`,
+  CONDITIONAL_ESCROW:  (import.meta.env.VITE_CONDITIONAL_ESCROW_ADDRESS  ?? "0xdf4a78fd953ed558902ec46b12a2d1f67fee427d") as `0x${string}`,
+  PAYROLL_VESTING:     (import.meta.env.VITE_PAYROLL_VESTING_ADDRESS     ?? "0xda68d90f4aa3feee7898addb9e646d5309044340") as `0x${string}`,
+  CROSSCHAIN_ESCROW:   (import.meta.env.VITE_CROSSCHAIN_ESCROW_ADDRESS   ?? "0x2e66ec075e0030353ede77615c63afdb35dd5694") as `0x${string}`,
   USDC:                (import.meta.env.VITE_USDC_ADDRESS                ?? "0x3600000000000000000000000000000000000000") as `0x${string}`,
   EURC:                (import.meta.env.VITE_EURC_ADDRESS                ?? "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a") as `0x${string}`,
-  // Circle CCTP v2 not yet deployed on Arc Testnet — MockTokenMessengerV2 used instead
-  TOKEN_MESSENGER_V2:  "0x4718977f0C6A6D2a52Ec9Ae637e62b8465a2b7EB" as `0x${string}`,
+  TOKEN_MESSENGER_V2:  "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA" as `0x${string}`,
+  MESSAGE_TRANSMITTER_V2: "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275" as `0x${string}`,
 };
 
 export const ERC20_ABI = [
@@ -96,6 +96,9 @@ export const CROSSCHAIN_ESCROW_ABI = [
     outputs: [{ name: "id", type: "uint256" }],
   },
 ] as const;
+
+// Arc Testnet CCTP Domain ID is 26 (source chain — not a valid destination from Arc)
+export const ARC_CCTP_DOMAIN = 26;
 
 export const DEST_DOMAINS: Record<string, number> = {
   "Ethereum Sepolia": 0,
