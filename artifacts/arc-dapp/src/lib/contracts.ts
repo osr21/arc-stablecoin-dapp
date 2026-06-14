@@ -15,12 +15,13 @@ export const ARC_TESTNET = {
 } as const;
 
 export const CONTRACT_ADDRESSES = {
-  CONDITIONAL_ESCROW:  (import.meta.env.VITE_CONDITIONAL_ESCROW_ADDRESS  ?? "0x8FB927c5C50B246cFD66Bc77BE6E3D28D9c63f83") as `0x${string}`,
-  PAYROLL_VESTING:     (import.meta.env.VITE_PAYROLL_VESTING_ADDRESS     ?? "0xdE7523701477282bE9e9DdDCB98d43A72EC5a31C") as `0x${string}`,
-  CROSSCHAIN_ESCROW:   (import.meta.env.VITE_CROSSCHAIN_ESCROW_ADDRESS   ?? "0x6f4cfDa3D91950DF38556a4a6D471Be817936370") as `0x${string}`,
+  CONDITIONAL_ESCROW:  (import.meta.env.VITE_CONDITIONAL_ESCROW_ADDRESS  ?? "0xdD38D67Fe054308D56E4458fC47a43106871D874") as `0x${string}`,
+  PAYROLL_VESTING:     (import.meta.env.VITE_PAYROLL_VESTING_ADDRESS     ?? "0xd98c4F2819b26d0E346469A808Ff892E87C057B6") as `0x${string}`,
+  CROSSCHAIN_ESCROW:   (import.meta.env.VITE_CROSSCHAIN_ESCROW_ADDRESS   ?? "0xcBFc910c6bDD2c8877249E4A658A26A7009c3f8F") as `0x${string}`,
   USDC:                (import.meta.env.VITE_USDC_ADDRESS                ?? "0x3600000000000000000000000000000000000000") as `0x${string}`,
   EURC:                (import.meta.env.VITE_EURC_ADDRESS                ?? "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a") as `0x${string}`,
-  TOKEN_MESSENGER_V2:  "0x28b0b9A9f49Ad9a09C9b80A4dc3C0e56F2b71406" as `0x${string}`,
+  // Circle CCTP v2 not yet deployed on Arc Testnet — MockTokenMessengerV2 used instead
+  TOKEN_MESSENGER_V2:  "0x4718977f0C6A6D2a52Ec9Ae637e62b8465a2b7EB" as `0x${string}`,
 };
 
 export const ERC20_ABI = [

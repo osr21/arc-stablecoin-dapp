@@ -37,7 +37,7 @@ A full-stack DApp on Arc Testnet (Chain ID: 5042002) demonstrating advanced Circ
 
 - **Contract-first API**: OpenAPI spec → Orval codegen drives both client hooks and server Zod validators. No manual type duplication.
 - **Token amounts stored as raw base units**: All USDC/EURC amounts in DB and API are stored as strings in raw 6-decimal base units (e.g. `"5000000"` = 5 USDC). Frontend uses `formatTokenAmount()` / `parseTokenAmount()` from `lib/format.ts`.
-- **CCTP v2 integration**: CrosschainEscrow.sol calls `depositForBurnWithHook()` on `TokenMessengerV2` (0x28b0...1406). The API's `/api/cctp/attestation/:txHash` polls Circle's IRIS sandbox API to surface attestation status.
+- **CCTP v2 integration**: CrosschainEscrow.sol calls `depositForBurnWithHook()` on `MockTokenMessengerV2` (0x4718...7EB) — Circle CCTP v2 is not yet deployed on Arc Testnet, so a mock that mirrors the interface and emits canonical events is used instead. The API's `/api/cctp/attestation/:txHash` polls Circle's IRIS sandbox API; with the mock, IRIS returns nothing (attestation stays `pending_confirmations`), which is displayed with a "Simulated" indicator in the UI.
 - **Simulation-first UX**: Forms generate random contract addresses and tx hashes so the full UI flow works without a live wallet; real wallet interaction replaces these when MetaMask is connected.
 - **Arc Testnet specifics**: USDC on Arc is the native gas token wrapped as ERC-20 at `0x3600...0000`; EURC is at `0x89B5...D72a`; CCTP Domain ID is 7.
 
@@ -50,13 +50,16 @@ A full-stack DApp on Arc Testnet (Chain ID: 5042002) demonstrating advanced Circ
 - **Contracts**: Reference card with deployed addresses, ABIs, and Arc Testnet chain info
 - **Architecture**: SVG system diagram + canvas board showing full stack topology
 
-## Deployed Contract Addresses (Arc Testnet, Block 47047205)
+## Deployed Contract Addresses (Arc Testnet, Block 47067610)
 
 | Contract | Address |
 |----------|---------|
-| ConditionalEscrow | `0x8FB927c5C50B246cFD66Bc77BE6E3D28D9c63f83` |
-| PayrollVesting | `0xdE7523701477282bE9e9DdDCB98d43A72EC5a31C` |
-| CrosschainEscrow | `0x6f4cfDa3D91950DF38556a4a6D471Be817936370` |
+| ConditionalEscrow | `0xdD38D67Fe054308D56E4458fC47a43106871D874` |
+| PayrollVesting | `0xd98c4F2819b26d0E346469A808Ff892E87C057B6` |
+| MockTokenMessengerV2 | `0x4718977f0C6A6D2a52Ec9Ae637e62b8465a2b7EB` |
+| CrosschainEscrow | `0xcBFc910c6bDD2c8877249E4A658A26A7009c3f8F` |
+
+**Note:** Circle has not yet deployed CCTP v2 on Arc Testnet. `MockTokenMessengerV2` implements the `depositForBurnWithHook` interface and emits `DepositForBurn` + `MessageSent` events so the full UI flow works. When Circle deploys real CCTP v2 on Arc, redeploy `CrosschainEscrow` pointing to their `TokenMessengerV2` address.
 
 To redeploy: `cd contracts && forge script script/Deploy.s.sol:Deploy --rpc-url https://rpc.testnet.arc.network --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast --config-path foundry.toml`
 
@@ -70,7 +73,8 @@ To redeploy: `cd contracts && forge script script/Deploy.s.sol:Deploy --rpc-url 
 | USDC | 0x3600000000000000000000000000000000000000 |
 | EURC | 0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a |
 | CCTP Domain ID | 7 |
-| TokenMessengerV2 | 0x28b0b9a9F49AD9A09C9B80A4DC3C0E56f2B71406 |
+| TokenMessengerV2 (Circle — NOT on Arc yet) | 0x28b0b9a9F49AD9A09C9B80A4DC3C0E56f2B71406 |
+| MockTokenMessengerV2 (deployed on Arc) | 0x4718977f0C6A6D2a52Ec9Ae637e62b8465a2b7EB |
 | MessageTransmitterV2 | 0x81D40F21F12A8F0E3252Bccb954D722d4c464B64 |
 | Faucet | https://faucet.circle.com |
 

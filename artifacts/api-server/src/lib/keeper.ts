@@ -5,7 +5,7 @@ import { eq, and, lt } from "drizzle-orm";
 import { logger } from "./logger";
 
 const ARC_RPC = "https://rpc.testnet.arc.network";
-const CONDITIONAL_ESCROW = "0x8FB927c5C50B246cFD66Bc77BE6E3D28D9c63f83" as `0x${string}`;
+const CONDITIONAL_ESCROW = "0xdD38D67Fe054308D56E4458fC47a43106871D874" as `0x${string}`;
 const INTERVAL_MS = 60_000;
 
 const ARC_CHAIN = {
