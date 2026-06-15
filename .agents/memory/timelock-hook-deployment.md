@@ -35,6 +35,16 @@ TimeLockHook.handleReceiveMessage() parses amount (offset 68) and hookData (offs
 | Contract | Chain | Address |
 |---|---|---|
 | TimeLockHook | Ethereum Sepolia (11155111) | 0x6f9E0D1745079A1C14B6546F13Bfc6ccd3d305E5 |
+| TimeLockHook | Arbitrum Sepolia (421614) | 0xfeC8d9ceC403817514dA770832fc92b64E3a3b3e |
+| TimeLockHook | Base Sepolia (84532) | NOT deployed — deployer wallet has no Base Sepolia ETH |
+
+To deploy on Base Sepolia once funded, run:
+```bash
+forge script script/DeployTimeLockHook.s.sol:DeployTimeLockHook \
+  --rpc-url https://sepolia.base.org \
+  --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast --config-path foundry.toml
+```
+Then set `"Base Sepolia"` in `TIME_LOCK_HOOK_ADDRESSES` in `artifacts/arc-dapp/src/lib/contracts.ts`.
 
 **Why:** Circle CCTP v2 mints to `mintRecipient` then calls `handleReceiveMessage(sourceDomain, sender, messageBody)` on it. The hook enforces any condition (time-lock, oracle, multisig) without modifying the CCTP protocol.
 

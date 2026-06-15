@@ -58,6 +58,8 @@ A full-stack DApp on Arc Testnet (Chain ID: 5042002) demonstrating advanced Circ
 | PayrollVesting | Arc Testnet | `0xDB7672E26f203a0f37b93042Df150D2E95831387` |
 | CrosschainEscrow | Arc Testnet | `0x72923f5f69AeD25aaf92779ceF221342dbE7dfDB` |
 | TimeLockHook | Ethereum Sepolia | `0x6f9E0D1745079A1C14B6546F13Bfc6ccd3d305E5` |
+| TimeLockHook | Arbitrum Sepolia | `0xfeC8d9ceC403817514dA770832fc92b64E3a3b3e` |
+| TimeLockHook | Base Sepolia | not deployed — deployer wallet needs Base Sepolia ETH |
 
 To redeploy Arc contracts: `cd contracts && forge script script/Deploy.s.sol:Deploy --rpc-url https://rpc.testnet.arc.network --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast --config-path foundry.toml`
 

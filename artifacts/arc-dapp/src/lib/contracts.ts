@@ -153,8 +153,8 @@ export const TIME_LOCK_HOOK_ABI = [
  */
 export const TIME_LOCK_HOOK_ADDRESSES: Record<string, `0x${string}` | null> = {
   "Ethereum Sepolia": "0x6f9E0D1745079A1C14B6546F13Bfc6ccd3d305E5",
-  "Base Sepolia":     null,
-  "Arbitrum Sepolia": null,
+  "Base Sepolia":     null, // deployer wallet needs Base Sepolia ETH — see replit.md
+  "Arbitrum Sepolia": "0xfeC8d9ceC403817514dA770832fc92b64E3a3b3e",
 };
 
 /**
