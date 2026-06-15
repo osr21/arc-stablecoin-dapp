@@ -31,18 +31,25 @@ Frontend uses `computeTimeLockReleaseId()` from `contracts.ts` (uses viem `padHe
 ```
 TimeLockHook.handleReceiveMessage() parses amount (offset 68) and hookData (offset 168) directly from messageBody.
 
-## Deployed addresses
+## Deployed addresses (current — v3, both bugs fixed)
 | Contract | Chain | Address |
 |---|---|---|
-| TimeLockHook | Ethereum Sepolia (11155111) | 0x195B1559D5d1b032d65Bbc2b68B4D1D23739F8A6 |
-| TimeLockHook | Arbitrum Sepolia (421614) | 0x33486F8008a1A3F69982615F7A0D50B4Dc1C273C |
+| TimeLockHook | Ethereum Sepolia (11155111) | 0xafC1BC5a555b723cA0bB7098f161F1f883F4a3c0 |
+| TimeLockHook | Arbitrum Sepolia (421614) | 0x814583a132E83804fA4D2F1Ea35999A620093d97 |
 | TimeLockHook | Base Sepolia (84532) | NOT deployed — deployer wallet has no Base Sepolia ETH |
 
-## CRITICAL BUG (fixed): wrong caller guard
+## CRITICAL BUG 1 (fixed): wrong caller guard
 Original contract checked `msg.sender == messageTransmitter` (MessageTransmitterV2).
 Actual call chain is: MessageTransmitterV2 → TokenMessengerV2 → hook.handleReceiveMessage()
 So msg.sender is TokenMessengerV2, not MessageTransmitterV2. Every receiveMessage reverted.
 Fix: constructor now takes TOKEN_MESSENGER_V2 (0x8FE6...DAA), stored as `tokenMessenger`, checked in guard.
+
+## CRITICAL BUG 2 (fixed): wrong BurnMessageV2 hookData offset
+BurnMessageV2 layout: [164:168] = minFinalityThreshold (uint32, value 2000 on Arc), NOT a hookData length prefix.
+hookData has NO length prefix — it runs from offset 168 to end of messageBody.
+Original code read minFinalityThreshold (2000) as hookDataLen, then checked messageBody.length < 168+2000
+which always failed (actual body = 232 bytes) → HookDataTooShort revert → gas estimation fail.
+Fix: `bytes calldata hookData = messageBody[168:]` with minimum size check `< 168+64`.
 
 To deploy on Base Sepolia once funded, run:
 ```bash

@@ -37,14 +37,14 @@ import "./IERC20.sol";
  *   keccak256(abi.encode(sourceDomain, messageSender_bytes32, finalRecipient, amount, unlockTimestamp))
  *
  * BurnMessageV2 packed layout (all offsets in bytes):
- *   [0:4]    version         uint32
- *   [4:36]   burnToken       bytes32
- *   [36:68]  mintRecipient   bytes32
- *   [68:100] amount          uint256
- *   [100:132] messageSender  bytes32
- *   [132:164] maxFee         uint256
- *   [164:168] hookDataLen    uint32
- *   [168:]   hookData        bytes
+ *   [0:4]    version              uint32   (4 bytes)
+ *   [4:36]   burnToken            bytes32  (32 bytes)
+ *   [36:68]  mintRecipient        bytes32  (32 bytes)
+ *   [68:100] amount               uint256  (32 bytes)
+ *   [100:132] messageSender       bytes32  (32 bytes)
+ *   [132:164] maxFee              uint256  (32 bytes)
+ *   [164:168] minFinalityThreshold uint32  (4 bytes) ← NOT a hookData length prefix
+ *   [168:]   hookData             bytes    (no length prefix; runs to end of messageBody)
  *
  * Caller hierarchy on destination chain:
  *   MessageTransmitterV2 (0xE737...275) calls TokenMessengerV2
@@ -91,7 +91,6 @@ contract TimeLockHook {
 
     error OnlyTokenMessenger();
     error MessageTooShort();
-    error HookDataTooShort();
     error ReleaseAlreadyExists();
     error ReleaseNotFound();
     error NotRecipient();
@@ -130,16 +129,17 @@ contract TimeLockHook {
         bytes calldata messageBody
     ) external returns (bool) {
         if (msg.sender != tokenMessenger) revert OnlyTokenMessenger();
-        // minimum: 4+32+32+32+32+32+4 = 168 bytes
-        if (messageBody.length < 168)     revert MessageTooShort();
+        // Fixed header: 4+32+32+32+32+32+4 = 168 bytes.
+        // [164:168] is minFinalityThreshold (uint32), NOT a hookData length prefix.
+        // hookData begins at offset 168 and runs to the end of messageBody.
+        // Our hookData is always abi.encode(address, uint256) = 64 bytes minimum.
+        if (messageBody.length < 168 + 64) revert MessageTooShort();
 
         // Parse amount at offset 68
         uint256 amount = uint256(bytes32(messageBody[68:100]));
 
-        // Parse hookData: length at offset 164 (uint32 = 4 bytes), data follows
-        uint32 hookDataLen = uint32(bytes4(messageBody[164:168]));
-        if (messageBody.length < 168 + uint256(hookDataLen)) revert HookDataTooShort();
-        bytes calldata hookData = messageBody[168:168 + uint256(hookDataLen)];
+        // hookData: everything from offset 168 to end (no length prefix in BurnMessageV2)
+        bytes calldata hookData = messageBody[168:];
 
         // Decode hookData: (finalRecipient, unlockTimestamp)
         (address finalRecipient, uint256 unlockTimestamp) = abi.decode(hookData, (address, uint256));
