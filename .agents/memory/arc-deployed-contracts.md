@@ -5,31 +5,25 @@ description: Live smart contract addresses deployed to Arc Testnet (Chain ID 504
 
 # Arc Testnet Deployed Contracts
 
-**Chain ID:** 5042002  
-**Deploy block:** 47047205  
-**Deploy tx bundle:** 3 transactions, ~0.06 USDC gas total
+**Chain ID:** 5042002
 
-## Contract Addresses
+## Current Contract Addresses (with owner field — Arcscan-visible)
 
 | Contract | Address |
 |----------|---------|
-| ConditionalEscrow | `0x8FB927c5C50B246cFD66Bc77BE6E3D28D9c63f83` |
-| PayrollVesting | `0xdE7523701477282bE9e9DdDCB98d43A72EC5a31C` |
-| CrosschainEscrow | `0x6f4cfDa3D91950DF38556a4a6D471Be817936370` |
+| ConditionalEscrow | `0x80365Ee810E3E33331a685B536Cc26eEF8faD189` |
+| PayrollVesting | `0xc4fA76E30A5Ba75805dcd992B30c16d122ccCA52` |
+| CrosschainEscrow | `0x88940708A558188636748d61aD5663A31c120fa7` |
 
-## Stored as env vars (shared)
-- `VITE_CONDITIONAL_ESCROW_ADDRESS`
-- `VITE_PAYROLL_VESTING_ADDRESS`
-- `VITE_CROSSCHAIN_ESCROW_ADDRESS`
-- `VITE_ARC_RPC_URL`, `VITE_ARC_CHAIN_ID`, `VITE_USDC_ADDRESS`, `VITE_EURC_ADDRESS`
+## Key design notes
 
-## Deployment setup
-- Foundry (forge) installed via Nix `foundry` package
-- `contracts/foundry.toml` — config with `via_ir = true` (required due to stack-too-deep in CrosschainEscrow)
-- `contracts/script/Deploy.s.sol` — uses `vm.startBroadcast()` (no vm.envUint — private key passed via --private-key CLI flag)
-- forge-std downloaded as tar from GitHub to `contracts/lib/forge-std/`
-- `contracts/src/IERC20.sol` — shared interface (each contract had its own duplicate which caused compile collision)
+- All three contracts have `address public owner` set to `msg.sender` in constructor — Arcscan reads the `owner()` getter to display owner on the contract page.
+- No OpenZeppelin dependency — minimal pattern directly in Solidity.
+- Addresses are hardcoded as defaults in `artifacts/arc-dapp/src/lib/contracts.ts` (overridable via VITE_ env vars).
+- `via_ir = true` in foundry.toml — required due to stack-too-deep in CrosschainEscrow (7 params + locals).
 
-**Why via_ir:** CrosschainEscrow.initiateConditionalTransfer has 7 params + local vars, hitting stack depth limit without IR pipeline.
+## Deployment
 
-**How to redeploy:** `cd contracts && forge script script/Deploy.s.sol:Deploy --rpc-url https://rpc.testnet.arc.network --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast --config-path foundry.toml`
+- `contracts/script/Deploy.s.sol:Deploy` — deploys all three, logs addresses
+- **Command:** `cd contracts && forge script script/Deploy.s.sol:Deploy --rpc-url https://rpc.testnet.arc.network --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast --config-path foundry.toml`
+- forge-std in `contracts/lib/forge-std/`; shared `contracts/src/IERC20.sol`

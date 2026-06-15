@@ -33,8 +33,14 @@ contract PayrollVesting {
         bool revoked;
     }
 
+    address public owner;
+
     mapping(uint256 => Schedule) public schedules;
     uint256 public nextId;
+
+    constructor() {
+        owner = msg.sender;
+    }
 
     event ScheduleCreated(
         uint256 indexed id,

@@ -36,8 +36,14 @@ contract ConditionalEscrow {
         string disputeReason;
     }
 
+    address public owner;
+
     mapping(uint256 => EscrowData) public escrows;
     uint256 public nextId;
+
+    constructor() {
+        owner = msg.sender;
+    }
 
     event EscrowCreated(
         uint256 indexed id,

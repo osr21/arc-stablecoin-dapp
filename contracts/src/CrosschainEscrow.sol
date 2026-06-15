@@ -70,6 +70,7 @@ contract CrosschainEscrow {
         string  conditionDescription;
     }
 
+    address public owner;
     address public immutable tokenMessengerV2;
     address public immutable usdc;
 
@@ -91,6 +92,7 @@ contract CrosschainEscrow {
      * @param _usdc             USDC token address on this chain.
      */
     constructor(address _tokenMessengerV2, address _usdc) {
+        owner = msg.sender;
         tokenMessengerV2 = _tokenMessengerV2;
         usdc = _usdc;
     }
