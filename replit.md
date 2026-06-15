@@ -52,13 +52,16 @@ A full-stack DApp on Arc Testnet (Chain ID: 5042002) demonstrating advanced Circ
 
 ## Deployed Contract Addresses (Arc Testnet, Block 47067610)
 
-| Contract | Address |
-|----------|---------|
-| ConditionalEscrow | `0x5c4927C8b3b627415E78a151B68B07A079Bd21c1` |
-| PayrollVesting | `0xDB7672E26f203a0f37b93042Df150D2E95831387` |
-| CrosschainEscrow | `0x72923f5f69AeD25aaf92779ceF221342dbE7dfDB` |
+| Contract | Chain | Address |
+|----------|-------|---------|
+| ConditionalEscrow | Arc Testnet | `0x5c4927C8b3b627415E78a151B68B07A079Bd21c1` |
+| PayrollVesting | Arc Testnet | `0xDB7672E26f203a0f37b93042Df150D2E95831387` |
+| CrosschainEscrow | Arc Testnet | `0x72923f5f69AeD25aaf92779ceF221342dbE7dfDB` |
+| TimeLockHook | Ethereum Sepolia | `0x6f9E0D1745079A1C14B6546F13Bfc6ccd3d305E5` |
 
-To redeploy: `cd contracts && forge script script/Deploy.s.sol:Deploy --rpc-url https://rpc.testnet.arc.network --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast --config-path foundry.toml`
+To redeploy Arc contracts: `cd contracts && forge script script/Deploy.s.sol:Deploy --rpc-url https://rpc.testnet.arc.network --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast --config-path foundry.toml`
+
+To redeploy TimeLockHook (Ethereum Sepolia): `cd contracts && forge script script/DeployTimeLockHook.s.sol:DeployTimeLockHook --rpc-url https://ethereum-sepolia-rpc.publicnode.com --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast --config-path foundry.toml`
 
 ## Arc Testnet Reference
 
