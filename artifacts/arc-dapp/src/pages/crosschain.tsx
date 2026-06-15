@@ -53,16 +53,47 @@ interface AttestationResult {
   relayFeeUsdc: string | null;
 }
 
+// ~0.003 ETH: enough headroom for receiveMessage gas on any testnet at current base fees
+const GAS_THRESHOLD_WEI = 3_000_000_000_000_000n;
+
+function formatEth(wei: bigint): string {
+  return (Number(wei) / 1e18).toFixed(5);
+}
+
 function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: string }) {
-  const [open, setOpen]       = useState(false);
-  const [attest, setAttest]   = useState<AttestationResult | null>(null);
-  const [polling, setPolling] = useState(false);
+  const [open, setOpen]         = useState(false);
+  const [attest, setAttest]     = useState<AttestationResult | null>(null);
+  const [polling, setPolling]   = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [claimTx, setClaimTx]   = useState<string | null>(null);
   const [err, setErr]           = useState<string | null>(null);
   const [copied, setCopied]     = useState(false);
+  const [destBalance, setDestBalance] = useState<bigint | null>(null);
 
   const destConfig = DEST_CHAIN_CONFIGS[destChain];
+
+  const checkDestBalance = useCallback(async () => {
+    if (!destConfig) return;
+    const eth = (window as any).ethereum;
+    if (!eth) return;
+    try {
+      const accounts: string[] = await eth.request({ method: "eth_accounts" });
+      if (!accounts[0]) return;
+      const pc = createPublicClient({
+        chain: {
+          id: destConfig.chainId,
+          name: destConfig.name,
+          nativeCurrency: destConfig.nativeCurrency,
+          rpcUrls: { default: { http: [destConfig.rpc] }, public: { http: [destConfig.rpc] } },
+        } as any,
+        transport: http(destConfig.rpc),
+      });
+      const balance = await pc.getBalance({ address: accounts[0] as Address });
+      setDestBalance(balance);
+    } catch {
+      // non-fatal — balance display is informational
+    }
+  }, [destConfig]);
 
   const poll = useCallback(async () => {
     setPolling(true);
@@ -82,6 +113,11 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
     const id = setInterval(poll, 15_000);
     return () => clearInterval(id);
   }, [open, poll]);
+
+  // Check destination ETH balance once attestation is confirmed ready
+  useEffect(() => {
+    if (attest?.attestation) checkDestBalance();
+  }, [attest?.attestation, checkDestBalance]);
 
   const copyText = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -212,24 +248,54 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
           {/* Self-relay */}
           {!claimTx && (
             <div className="space-y-3">
+              {/* Low balance warning — shown as soon as we know */}
+              {isReady && destBalance !== null && destBalance < GAS_THRESHOLD_WEI && destConfig && (
+                <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 p-3 text-xs space-y-1">
+                  <p className="text-yellow-400 font-medium">
+                    ⚠ Low {destConfig.nativeCurrency.symbol} balance on {destChain}
+                  </p>
+                  <p className="text-muted-foreground">
+                    Your wallet has <span className="text-foreground font-mono">{formatEth(destBalance)} {destConfig.nativeCurrency.symbol}</span> on {destChain}.
+                    The <code>receiveMessage</code> call typically costs ~0.001–0.003 {destConfig.nativeCurrency.symbol} in gas.
+                    Top up before claiming — the tx will revert with "insufficient funds" otherwise.
+                  </p>
+                  <div className="flex flex-wrap gap-3 pt-1">
+                    <a href="https://faucet.circle.com" target="_blank" rel="noreferrer"
+                      className="text-primary hover:underline">Circle faucet ↗</a>
+                    <a href="https://sepolia-faucet.pk910.de" target="_blank" rel="noreferrer"
+                      className="text-primary hover:underline">Sepolia PoW faucet ↗</a>
+                    <a href="https://www.alchemy.com/faucets/ethereum-sepolia" target="_blank" rel="noreferrer"
+                      className="text-primary hover:underline">Alchemy faucet ↗</a>
+                  </div>
+                </div>
+              )}
+
+              {/* Balance OK indicator */}
+              {isReady && destBalance !== null && destBalance >= GAS_THRESHOLD_WEI && destConfig && (
+                <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                  <span>{destChain} balance</span>
+                  <span className="text-green-400 font-mono">
+                    {formatEth(destBalance)} {destConfig.nativeCurrency.symbol} ✓
+                  </span>
+                </div>
+              )}
+
               <div className="rounded-md bg-muted/50 border border-border p-3 text-xs space-y-1 text-muted-foreground">
                 <p>MetaMask switches to <strong>{destChain}</strong> and calls <code className="text-foreground">receiveMessage</code> on the Circle MessageTransmitter.</p>
-                <p>You receive the <strong>full amount</strong> with no relay fee. You need a small amount of {destConfig?.nativeCurrency.symbol ?? "ETH"} on {destChain} for gas (~0.001).</p>
-                {destConfig && (
-                  <p className="pt-1">
-                    Need testnet {destConfig.nativeCurrency.symbol}?{" "}
-                    <a href="https://faucet.circle.com" target="_blank" rel="noreferrer" className="text-primary hover:underline">Circle faucet ↗</a>
-                    {" · "}
-                    <a href="https://sepolia-faucet.pk910.de" target="_blank" rel="noreferrer" className="text-primary hover:underline">Sepolia PoW faucet ↗</a>
-                  </p>
-                )}
+                <p>You receive the <strong>full amount</strong> — no relay fee. Gas costs ~0.001–0.003 {destConfig?.nativeCurrency.symbol ?? "ETH"} on {destChain}.</p>
               </div>
-              <Button className="w-full" disabled={!isReady || claiming || !destConfig} onClick={handleSelfClaim}>
+              <Button
+                className="w-full"
+                disabled={!isReady || claiming || !destConfig || (destBalance !== null && destBalance < GAS_THRESHOLD_WEI)}
+                onClick={handleSelfClaim}
+              >
                 {claiming
                   ? "Switching chain & submitting…"
-                  : isReady
-                  ? `Claim USDC on ${destChain} via MetaMask`
-                  : "Waiting for attestation…"}
+                  : !isReady
+                  ? "Waiting for attestation…"
+                  : destBalance !== null && destBalance < GAS_THRESHOLD_WEI
+                  ? `Insufficient ${destConfig?.nativeCurrency.symbol ?? "ETH"} for gas — top up first`
+                  : `Claim USDC on ${destChain} via MetaMask`}
               </Button>
             </div>
           )}
