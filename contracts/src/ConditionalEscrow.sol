@@ -98,6 +98,8 @@ contract ConditionalEscrow {
     ) external returns (uint256 id) {
         require(beneficiary != address(0), "Zero beneficiary");
         require(arbiter != address(0), "Zero arbiter");
+        require(arbiter != beneficiary, "Arbiter cannot be beneficiary");
+        require(arbiter != msg.sender,  "Arbiter cannot be depositor");
         require(amount > 0, "Zero amount");
         require(releaseTime > block.timestamp, "Release time in past");
 
@@ -129,10 +131,13 @@ contract ConditionalEscrow {
     function release(uint256 id) external inStatus(id, Status.Active) {
         EscrowData storage e = escrows[id];
 
-        bool isParty = (msg.sender == e.depositor || msg.sender == e.beneficiary);
-        bool timeExpired = block.timestamp >= e.releaseTime;
+        // Only the depositor may release early (signalling conditions are met).
+        // Beneficiary CANNOT unilaterally release before time — that would bypass escrow.
+        // Anyone may release permissionlessly once the release time has passed.
+        bool isDepositor  = msg.sender == e.depositor;
+        bool timeExpired  = block.timestamp >= e.releaseTime;
 
-        require(isParty || timeExpired, "Cannot release yet");
+        require(isDepositor || timeExpired, "Cannot release yet");
 
         e.status = Status.Released;
         IERC20(e.token).transfer(e.beneficiary, e.amount);

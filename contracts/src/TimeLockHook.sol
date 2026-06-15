@@ -49,6 +49,9 @@ interface IMessageTransmitterV2 {
  */
 contract TimeLockHook {
 
+    // ─── Owner (for Arcscan display) ─────────────────────────────────────────
+    address public owner;
+
     // ─── State ────────────────────────────────────────────────────────────────
 
     /// @notice MessageTransmitterV2 on this chain — called internally by relay().
@@ -93,6 +96,7 @@ contract TimeLockHook {
     // ─── Constructor ──────────────────────────────────────────────────────────
 
     constructor(address _messageTransmitter, address _usdc) {
+        owner = msg.sender;
         messageTransmitter = _messageTransmitter;
         usdc = _usdc;
     }
@@ -112,12 +116,22 @@ contract TimeLockHook {
      * @param unlockTimestamp Unix timestamp after which claim() is permitted.
      * @return releaseId      Unique ID — pass this to claim(). Also emitted in ReleaseScheduled.
      */
+    /**
+     * @dev SECURITY NOTE (testnet): `finalRecipient` and `unlockTimestamp` are
+     *      caller-supplied and not verified against the hookData embedded in the
+     *      CCTP message. A malicious relayer could supply an arbitrary recipient
+     *      or a past unlock time. For production, parse and verify these values
+     *      from the BurnMessageV2 hookData in `message`.
+     *      In this demo the intended relayer is always the finalRecipient themselves.
+     */
     function relay(
         bytes calldata message,
         bytes calldata attestation,
         address finalRecipient,
         uint256 unlockTimestamp
     ) external returns (bytes32 releaseId) {
+        require(finalRecipient != address(0), "Zero recipient");
+
         uint256 balBefore = IERC20(usdc).balanceOf(address(this));
 
         bool ok = IMessageTransmitterV2(messageTransmitter).receiveMessage(message, attestation);
@@ -154,8 +168,10 @@ contract TimeLockHook {
         r.claimed = true;
         uint256 amount = r.amount;
 
-        emit Released(releaseId, r.recipient, amount);
+        // Emit after state update, before external call — safe because a transfer
+        // failure reverts the whole transaction (including the event and state change).
         require(IERC20(usdc).transfer(r.recipient, amount), "USDC transfer failed");
+        emit Released(releaseId, r.recipient, amount);
     }
 
     // ─── Views ────────────────────────────────────────────────────────────────

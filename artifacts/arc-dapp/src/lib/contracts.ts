@@ -15,9 +15,9 @@ export const ARC_TESTNET = {
 } as const;
 
 export const CONTRACT_ADDRESSES = {
-  CONDITIONAL_ESCROW:  (import.meta.env.VITE_CONDITIONAL_ESCROW_ADDRESS  ?? "0x80365Ee810E3E33331a685B536Cc26eEF8faD189") as `0x${string}`,
-  PAYROLL_VESTING:     (import.meta.env.VITE_PAYROLL_VESTING_ADDRESS     ?? "0xc4fA76E30A5Ba75805dcd992B30c16d122ccCA52") as `0x${string}`,
-  CROSSCHAIN_ESCROW:   (import.meta.env.VITE_CROSSCHAIN_ESCROW_ADDRESS   ?? "0x88940708A558188636748d61aD5663A31c120fa7") as `0x${string}`,
+  CONDITIONAL_ESCROW:  (import.meta.env.VITE_CONDITIONAL_ESCROW_ADDRESS  ?? "0xe64a01283af91a601ebf5a86efe36312783330e8") as `0x${string}`,
+  PAYROLL_VESTING:     (import.meta.env.VITE_PAYROLL_VESTING_ADDRESS     ?? "0xdc14d0a5233173776fc4ea1007251afb174d67e8") as `0x${string}`,
+  CROSSCHAIN_ESCROW:   (import.meta.env.VITE_CROSSCHAIN_ESCROW_ADDRESS   ?? "0x54d8ecd5de6e1ead23a1f00ec8d8acad495f4865") as `0x${string}`,
   USDC:                (import.meta.env.VITE_USDC_ADDRESS                ?? "0x3600000000000000000000000000000000000000") as `0x${string}`,
   EURC:                (import.meta.env.VITE_EURC_ADDRESS                ?? "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a") as `0x${string}`,
   TOKEN_MESSENGER_V2:  "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA" as `0x${string}`,
@@ -159,9 +159,9 @@ export const RELEASE_SCHEDULED_EVENT_ABI = [
  * Then fill in the address below for each chain.
  */
 export const TIME_LOCK_HOOK_ADDRESSES: Record<string, `0x${string}` | null> = {
-  "Ethereum Sepolia": "0x68c49409e3f5fC1e8CC745bE7082692f773945F6", // v6 deployed
+  "Ethereum Sepolia": "0x22f2ea9050a25da1c24caa76558a65aecc4adf4c", // v6 + security fixes
   "Base Sepolia":     null, // deployer wallet needs Base Sepolia ETH — see replit.md
-  "Arbitrum Sepolia": "0x0650beEB6Dd48beA2540ae942Ef3318086644c27", // v6 deployed
+  "Arbitrum Sepolia": "0x0e250b6b417e5b31c7f4bcc8a00352d0672474ad", // v6 + security fixes
 };
 
 /**

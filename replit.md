@@ -54,11 +54,11 @@ A full-stack DApp on Arc Testnet (Chain ID: 5042002) demonstrating advanced Circ
 
 | Contract | Chain | Address |
 |----------|-------|---------|
-| ConditionalEscrow | Arc Testnet | `0x80365Ee810E3E33331a685B536Cc26eEF8faD189` |
-| PayrollVesting | Arc Testnet | `0xc4fA76E30A5Ba75805dcd992B30c16d122ccCA52` |
-| CrosschainEscrow | Arc Testnet | `0x88940708A558188636748d61aD5663A31c120fa7` |
-| TimeLockHook v6 | Ethereum Sepolia | `0x68c49409e3f5fC1e8CC745bE7082692f773945F6` |
-| TimeLockHook v6 | Arbitrum Sepolia | `0x0650beEB6Dd48beA2540ae942Ef3318086644c27` |
+| ConditionalEscrow | Arc Testnet | `0xe64a01283af91a601ebf5a86efe36312783330e8` |
+| PayrollVesting | Arc Testnet | `0xdc14d0a5233173776fc4ea1007251afb174d67e8` |
+| CrosschainEscrow | Arc Testnet | `0x54d8ecd5de6e1ead23a1f00ec8d8acad495f4865` |
+| TimeLockHook v6 | Ethereum Sepolia | `0x22f2ea9050a25da1c24caa76558a65aecc4adf4c` |
+| TimeLockHook v6 | Arbitrum Sepolia | `0x0e250b6b417e5b31c7f4bcc8a00352d0672474ad` |
 | TimeLockHook v6 | Base Sepolia | not deployed — deployer wallet needs Base Sepolia ETH |
 
 To redeploy Arc contracts: `cd contracts && forge script script/Deploy.s.sol:Deploy --rpc-url https://rpc.testnet.arc.network --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast --config-path foundry.toml`

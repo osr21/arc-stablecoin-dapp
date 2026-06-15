@@ -158,14 +158,19 @@ contract PayrollVesting {
         Schedule storage s = schedules[id];
         require(!s.revoked, "Already revoked");
 
-        uint256 vested = vestedAmount(id);
-        uint256 unvested = s.totalAmount - vested;
+        uint256 vested   = vestedAmount(id);
+        // Tokens vested but not yet claimed by beneficiary — must be sent now, because
+        // after s.revoked = true, vestedAmount() returns amountClaimed, making
+        // claimableAmount() return 0 and locking these tokens in the contract forever.
+        uint256 unclaimed = vested - s.amountClaimed;
+        uint256 unvested  = s.totalAmount - vested;
 
         s.revoked = true;
+        // Prevent beneficiary from double-claiming after revoke pays them out.
+        s.amountClaimed = vested;
 
-        if (unvested > 0) {
-            IERC20(s.token).transfer(s.employer, unvested);
-        }
+        if (unclaimed > 0) IERC20(s.token).transfer(s.beneficiary, unclaimed);
+        if (unvested  > 0) IERC20(s.token).transfer(s.employer,    unvested);
 
         emit ScheduleRevoked(id, s.employer, unvested);
     }
