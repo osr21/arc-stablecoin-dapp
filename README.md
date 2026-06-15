@@ -2,7 +2,7 @@
 
 A full-stack decentralized application on **Arc Testnet** (Chain ID: 5042002) demonstrating advanced Circle stablecoin logic — USDC and EURC — across three on-chain primitives.
 
-Live demo: [arc-stablecoin-dapp.replit.app](https://arc-stablecoin-dapp.replit.app)
+Live demo: [arc-smart-stablecoin-logic.replit.app](https://arc-smart-stablecoin-logic.replit.app)
 
 ---
 
