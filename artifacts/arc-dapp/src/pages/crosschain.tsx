@@ -386,19 +386,80 @@ function ReceiveDialog({ txHash, destChain, transferId }: { txHash: string; dest
   );
 }
 
+// Predefined condition types with labels, description templates and on-chain hints
+const CONDITION_TYPES = [
+  {
+    value:       "unconditional",
+    label:       "Unconditional",
+    description: "Unconditional CCTP transfer",
+    hint:        "USDC mints to recipient immediately after attestation.",
+  },
+  {
+    value:       "time_lock",
+    label:       "Time-locked release",
+    description: "Funds released after time-lock condition is met",
+    hint:        "Encode a time-lock contract address as the hookData target on the destination chain.",
+  },
+  {
+    value:       "oracle",
+    label:       "Oracle-verified",
+    description: "Funds released upon external oracle confirmation",
+    hint:        "Encode an oracle contract that the hook calls before releasing USDC to the recipient.",
+  },
+  {
+    value:       "multisig",
+    label:       "Multisig approval",
+    description: "Funds released upon multisig approval",
+    hint:        "Encode a Gnosis Safe or similar multisig as the hook handler on the destination.",
+  },
+  {
+    value:       "custom",
+    label:       "Custom condition",
+    description: "",
+    hint:        "Describe any custom condition — stored on-chain in the CrosschainEscrow event.",
+  },
+] as const;
+
 export default function Crosschain() {
   const { data: transfers, isLoading } = useListCrosschainTransfers();
   const queryClient = useQueryClient();
   const { address, walletClient, publicClient, isConnected, isWrongNetwork, switchToArc } = useWallet();
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [txPending, setTxPending]   = useState(false);
-  const [formData, setFormData]     = useState({
+  const [createOpen, setCreateOpen]   = useState(false);
+  const [txPending, setTxPending]     = useState(false);
+  const [usdcBalance, setUsdcBalance] = useState<bigint | null>(null);
+  const [conditionType, setConditionType] = useState("unconditional");
+
+  const selectedCondition = CONDITION_TYPES.find(c => c.value === conditionType) ?? CONDITION_TYPES[0];
+
+  const [formData, setFormData] = useState({
     recipient:            "",
     destChain:            "Ethereum Sepolia",
     amount:               "",
     conditionDescription: "Unconditional CCTP transfer",
   });
+
+  // Fetch USDC balance on Arc when the dialog opens
+  useEffect(() => {
+    if (!createOpen || !address) return;
+    publicClient.readContract({
+      address: CONTRACT_ADDRESSES.USDC,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [address],
+    }).then((bal: unknown) => setUsdcBalance(bal as bigint)).catch(() => {});
+  }, [createOpen, address, publicClient]);
+
+  // Sync condition type selection → auto-fill description (unless user typed a custom one)
+  useEffect(() => {
+    if (conditionType !== "custom") {
+      setFormData(prev => ({ ...prev, conditionDescription: selectedCondition.description }));
+    }
+  }, [conditionType, selectedCondition.description]);
+
+  const parsedAmount  = parseFloat(formData.amount) || 0;
+  const hasAmount     = parsedAmount > 0;
+  const exceedsBalance = usdcBalance !== null && hasAmount && parseToken(formData.amount) > usdcBalance;
 
   const createTransfer = useCreateCrosschainTransfer({
     mutation: {
@@ -484,13 +545,17 @@ export default function Crosschain() {
         {isConnected && !isWrongNetwork && (
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild><Button>Initiate Transfer</Button></DialogTrigger>
-            <DialogContent className="sm:max-w-[440px]">
+            <DialogContent className="sm:max-w-[460px]">
               <DialogHeader><DialogTitle>Initiate CCTP v2 Transfer</DialogTitle></DialogHeader>
               <form onSubmit={handleCreate} className="space-y-4 pt-4">
+
+                {/* Sender */}
                 <div className="space-y-2">
                   <Label>Sender (you)</Label>
                   <Input value={address ?? ""} disabled className="bg-muted font-mono text-xs" />
                 </div>
+
+                {/* Recipient */}
                 <div className="space-y-2">
                   <Label>Recipient Address (on destination chain)</Label>
                   <Input
@@ -499,6 +564,8 @@ export default function Crosschain() {
                     placeholder="0x…" className="font-mono text-xs"
                   />
                 </div>
+
+                {/* Route */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Source Chain</Label>
@@ -516,28 +583,88 @@ export default function Crosschain() {
                     </Select>
                   </div>
                 </div>
+
+                {/* Amount with live balance */}
                 <div className="space-y-2">
-                  <Label>USDC Amount</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>USDC Amount</Label>
+                    {usdcBalance !== null && (
+                      <span className="text-xs text-muted-foreground">
+                        Balance:{" "}
+                        <button
+                          type="button"
+                          className="text-primary hover:underline font-mono"
+                          onClick={() => setFormData(prev => ({ ...prev, amount: formatTokenAmount(usdcBalance.toString()) }))}
+                        >
+                          {formatTokenAmount(usdcBalance.toString())} USDC
+                        </button>
+                      </span>
+                    )}
+                  </div>
                   <Input
-                    required type="number" step="0.000001" min="1.000001"
+                    required type="number" step="0.000001" min="0.000001"
                     value={formData.amount}
                     onChange={e => setFormData({ ...formData, amount: e.target.value })}
                     placeholder="0.00"
+                    className={exceedsBalance ? "border-destructive" : ""}
                   />
-                  <p className="text-xs text-muted-foreground">Minimum 1 USDC (relay fee) + transfer amount</p>
+                  {exceedsBalance && (
+                    <p className="text-xs text-destructive">Amount exceeds your USDC balance</p>
+                  )}
                 </div>
+
+                {/* Condition type */}
                 <div className="space-y-2">
-                  <Label>Condition Description</Label>
+                  <Label>Condition Type</Label>
+                  <Select value={conditionType} onValueChange={setConditionType}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {CONDITION_TYPES.map(c => (
+                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">{selectedCondition.hint}</p>
+                </div>
+
+                {/* Condition description — editable, auto-filled by type */}
+                <div className="space-y-2">
+                  <Label>Condition Description <span className="text-muted-foreground font-normal">(stored on-chain)</span></Label>
                   <Input
                     value={formData.conditionDescription}
-                    onChange={e => setFormData({ ...formData, conditionDescription: e.target.value })}
+                    onChange={e => {
+                      setConditionType("custom");
+                      setFormData({ ...formData, conditionDescription: e.target.value });
+                    }}
+                    placeholder="Describe the release condition…"
                   />
                 </div>
+
+                {/* Transfer preview */}
+                {hasAmount && (
+                  <div className="rounded-md border border-border bg-muted/30 p-3 text-xs space-y-1">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>You send (Arc Testnet)</span>
+                      <span className="text-foreground font-mono">{parsedAmount.toFixed(6)} USDC</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Recipient receives ({formData.destChain})</span>
+                      <span className="text-green-400 font-mono">{parsedAmount.toFixed(6)} USDC</span>
+                    </div>
+                    <div className="flex justify-between text-muted-foreground border-t border-border pt-1 mt-1">
+                      <span>Gas to claim on destination</span>
+                      <span>~0.001–0.003 ETH</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Info */}
                 <div className="bg-muted/50 rounded-md p-3 text-xs text-muted-foreground space-y-1">
                   <p>Two txs: approve USDC spend, then burn via CrosschainEscrow → CCTP v2.</p>
-                  <p>After burn, click <strong>Receive ↗</strong> to mint on the destination chain — no ETH needed with gas-free relay.</p>
+                  <p>After burn, click <strong>Receive ↗</strong> in the table to mint on the destination chain. You'll need a small amount of ETH on {formData.destChain} for gas.</p>
                 </div>
-                <Button type="submit" className="w-full mt-4" disabled={txPending}>
+
+                <Button type="submit" className="w-full mt-4" disabled={txPending || exceedsBalance}>
                   {txPending ? "Waiting for wallet…" : "Approve & Burn via CCTP v2"}
                 </Button>
               </form>
