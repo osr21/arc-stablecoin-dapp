@@ -15,9 +15,9 @@ export const ARC_TESTNET = {
 } as const;
 
 export const CONTRACT_ADDRESSES = {
-  CONDITIONAL_ESCROW:  (import.meta.env.VITE_CONDITIONAL_ESCROW_ADDRESS  ?? "0xdf4a78fd953ed558902ec46b12a2d1f67fee427d") as `0x${string}`,
-  PAYROLL_VESTING:     (import.meta.env.VITE_PAYROLL_VESTING_ADDRESS     ?? "0xda68d90f4aa3feee7898addb9e646d5309044340") as `0x${string}`,
-  CROSSCHAIN_ESCROW:   (import.meta.env.VITE_CROSSCHAIN_ESCROW_ADDRESS   ?? "0x2e66ec075e0030353ede77615c63afdb35dd5694") as `0x${string}`,
+  CONDITIONAL_ESCROW:  (import.meta.env.VITE_CONDITIONAL_ESCROW_ADDRESS  ?? "0x424d3736AF6AFcf54b3D51652B6452Fa0042F768") as `0x${string}`,
+  PAYROLL_VESTING:     (import.meta.env.VITE_PAYROLL_VESTING_ADDRESS     ?? "0x0b3d1267469522859d07b8364A931748156FFCbF") as `0x${string}`,
+  CROSSCHAIN_ESCROW:   (import.meta.env.VITE_CROSSCHAIN_ESCROW_ADDRESS   ?? "0xC02fC580Eb54Fa5904Faa6517A4801b8d33056B3") as `0x${string}`,
   USDC:                (import.meta.env.VITE_USDC_ADDRESS                ?? "0x3600000000000000000000000000000000000000") as `0x${string}`,
   EURC:                (import.meta.env.VITE_EURC_ADDRESS                ?? "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a") as `0x${string}`,
   TOKEN_MESSENGER_V2:  "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA" as `0x${string}`,

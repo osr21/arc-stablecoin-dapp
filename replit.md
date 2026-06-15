@@ -54,9 +54,9 @@ A full-stack DApp on Arc Testnet (Chain ID: 5042002) demonstrating advanced Circ
 
 | Contract | Address |
 |----------|---------|
-| ConditionalEscrow | `0xdf4a78fd953ed558902ec46b12a2d1f67fee427d` |
-| PayrollVesting | `0xda68d90f4aa3feee7898addb9e646d5309044340` |
-| CrosschainEscrow | `0x2e66ec075e0030353ede77615c63afdb35dd5694` |
+| ConditionalEscrow | `0x424d3736AF6AFcf54b3D51652B6452Fa0042F768` |
+| PayrollVesting | `0x0b3d1267469522859d07b8364A931748156FFCbF` |
+| CrosschainEscrow | `0xC02fC580Eb54Fa5904Faa6517A4801b8d33056B3` |
 
 To redeploy: `cd contracts && forge script script/Deploy.s.sol:Deploy --rpc-url https://rpc.testnet.arc.network --private-key "$DEPLOYER_PRIVATE_KEY" --broadcast --config-path foundry.toml`
 

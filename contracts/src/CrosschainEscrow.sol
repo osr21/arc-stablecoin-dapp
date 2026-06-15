@@ -26,25 +26,31 @@ import "./IERC20.sol";
 
 interface ITokenMessengerV2 {
     /**
-     * @notice Burn USDC with a hook for conditional destination execution.
-     * @param amount               Amount of USDC to burn and transfer.
-     * @param destinationDomain    CCTP domain ID of destination chain.
-     * @param mintRecipient        Recipient address on destination (32-byte padded).
-     * @param burnToken            USDC token address on source chain.
-     * @param destinationCaller    Caller restriction on destination (0 = anyone).
-     * @param maxFee               Maximum fee paid to Circle for fast attestation.
-     * @param minFinalityThreshold Minimum finality level required.
-     * @param hookData             ABI-encoded hook instructions for post-mint execution.
-     * @return nonce               Unique nonce for this burn event.
+     * @notice Burn USDC and transfer to destination chain (no hook).
+     *         Use for unconditional transfers where no post-mint logic is needed.
      */
-    function depositForBurnWithHook(
+    function depositForBurn(
         uint256 amount,
-        uint32 destinationDomain,
+        uint32  destinationDomain,
         bytes32 mintRecipient,
         address burnToken,
         bytes32 destinationCaller,
         uint256 maxFee,
-        uint32 minFinalityThreshold,
+        uint32  minFinalityThreshold
+    ) external returns (uint64 nonce);
+
+    /**
+     * @notice Burn USDC with a hook for conditional destination execution.
+     *         hookData MUST be non-empty — use depositForBurn for plain transfers.
+     */
+    function depositForBurnWithHook(
+        uint256 amount,
+        uint32  destinationDomain,
+        bytes32 mintRecipient,
+        address burnToken,
+        bytes32 destinationCaller,
+        uint256 maxFee,
+        uint32  minFinalityThreshold,
         bytes calldata hookData
     ) external returns (uint64 nonce);
 }
@@ -113,19 +119,34 @@ contract CrosschainEscrow {
         IERC20(usdc).transferFrom(msg.sender, address(this), amount);
         IERC20(usdc).approve(tokenMessengerV2, amount);
 
-        bytes32 mintRecipient  = bytes32(uint256(uint160(recipient)));
-        bytes32 destCaller     = bytes32(0); // anyone can mint on destination
+        bytes32 mintRecipient = bytes32(uint256(uint160(recipient)));
+        bytes32 destCaller    = bytes32(0); // anyone can mint on destination
 
-        uint64 nonce = ITokenMessengerV2(tokenMessengerV2).depositForBurnWithHook(
-            amount,
-            destinationDomain,
-            mintRecipient,
-            usdc,
-            destCaller,
-            maxFee,
-            minFinalityThreshold,
-            hookData
-        );
+        // CCTP v2: depositForBurnWithHook requires non-empty hookData.
+        // Route to the plain depositForBurn for unconditional transfers.
+        uint64 nonce;
+        if (hookData.length == 0) {
+            nonce = ITokenMessengerV2(tokenMessengerV2).depositForBurn(
+                amount,
+                destinationDomain,
+                mintRecipient,
+                usdc,
+                destCaller,
+                maxFee,
+                minFinalityThreshold
+            );
+        } else {
+            nonce = ITokenMessengerV2(tokenMessengerV2).depositForBurnWithHook(
+                amount,
+                destinationDomain,
+                mintRecipient,
+                usdc,
+                destCaller,
+                maxFee,
+                minFinalityThreshold,
+                hookData
+            );
+        }
 
         id = nextId++;
         transfers[id] = Transfer({
