@@ -182,6 +182,13 @@ function ReceiveDialog({ txHash, destChain, transferId }: { txHash: string; dest
       const wc = createWalletClient({ chain: destViemChain as any, transport: custom(eth) });
       const pc = createPublicClient({ chain: destViemChain as any, transport: http(destConfig.rpc) });
 
+      // Fetch current fee data and double maxFeePerGas so we always clear the base fee,
+      // even if it ticks up between estimation and submission.
+      const feeData = await pc.estimateFeesPerGas().catch(() => null);
+      const gasBump = feeData?.maxFeePerGas != null
+        ? { maxFeePerGas: feeData.maxFeePerGas * 2n, maxPriorityFeePerGas: (feeData.maxPriorityFeePerGas ?? 1_000_000n) }
+        : {};
+
       const hash = await wc.writeContract({
         address: MESSAGE_TRANSMITTER_V2_ADDRESS,
         abi: RECEIVE_MESSAGE_ABI,
@@ -189,6 +196,7 @@ function ReceiveDialog({ txHash, destChain, transferId }: { txHash: string; dest
         args: [attest.messageBytes as `0x${string}`, attest.attestation as `0x${string}`],
         account,
         chain: destViemChain as any,
+        ...gasBump,
       });
       await pc.waitForTransactionReceipt({ hash });
       setClaimTx(hash);
