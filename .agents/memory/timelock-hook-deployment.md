@@ -31,11 +31,11 @@ Frontend uses `computeTimeLockReleaseId()` from `contracts.ts` (uses viem `padHe
 ```
 TimeLockHook.handleReceiveMessage() parses amount (offset 68) and hookData (offset 168) directly from messageBody.
 
-## Deployed addresses (current — v3, both bugs fixed)
+## Deployed addresses (current — v4, all three bugs fixed)
 | Contract | Chain | Address |
 |---|---|---|
-| TimeLockHook | Ethereum Sepolia (11155111) | 0xafC1BC5a555b723cA0bB7098f161F1f883F4a3c0 |
-| TimeLockHook | Arbitrum Sepolia (421614) | 0x814583a132E83804fA4D2F1Ea35999A620093d97 |
+| TimeLockHook | Ethereum Sepolia (11155111) | 0x1985cE53D2a2eAFA05cD7e3FfBdbD16EDBC674c7 |
+| TimeLockHook | Arbitrum Sepolia (421614) | 0xE1017349D0455B6a2F220A55658B2A088F16f6e8 |
 | TimeLockHook | Base Sepolia (84532) | NOT deployed — deployer wallet has no Base Sepolia ETH |
 
 ## CRITICAL BUG 1 (fixed): wrong caller guard
@@ -50,6 +50,14 @@ hookData has NO length prefix — it runs from offset 168 to end of messageBody.
 Original code read minFinalityThreshold (2000) as hookDataLen, then checked messageBody.length < 168+2000
 which always failed (actual body = 232 bytes) → HookDataTooShort revert → gas estimation fail.
 Fix: `bytes calldata hookData = messageBody[168:]` with minimum size check `< 168+64`.
+
+## CRITICAL BUG 3 (fixed): releaseId sender mismatch (claim: ReleaseNotFound 0x28663ff8)
+Circle's outer CCTP message passes `sender = TokenMessengerV2 on source chain` to handleReceiveMessage.
+The contract was computing releaseId with this outer sender.
+The frontend computes releaseId using CONTRACT_ADDRESSES.CROSSCHAIN_ESCROW.
+These never match → claim() always gets ReleaseNotFound (0x28663ff8).
+Fix: read `messageSender = bytes32(messageBody[100:132])` from BurnMessageV2 body instead.
+This IS CrosschainEscrow (left-padded to 32 bytes), matching what the frontend uses.
 
 To deploy on Base Sepolia once funded, run:
 ```bash

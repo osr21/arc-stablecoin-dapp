@@ -119,8 +119,9 @@ contract TimeLockHook {
      *      Parses amount and hookData directly from the packed BurnMessageV2 body.
      *
      * @param sourceDomain   Source chain CCTP domain (Arc Testnet = 26).
-     * @param sender         Sender address on source chain packed as bytes32
-     *                       (i.e. CrosschainEscrow address, left-padded).
+     * @param sender         Outer CCTP message sender — this is TokenMessengerV2 on the source chain,
+     *                       NOT CrosschainEscrow. We do NOT use it for releaseId; we read messageSender
+     *                       from the BurnMessageV2 body instead (offset [100:132] = CrosschainEscrow).
      * @param messageBody    Packed BurnMessageV2 bytes — see layout in file header.
      */
     function handleReceiveMessage(
@@ -128,6 +129,9 @@ contract TimeLockHook {
         bytes32 sender,
         bytes calldata messageBody
     ) external returns (bool) {
+        // silence unused-variable warning — we read messageSender from body below
+        sender;
+
         if (msg.sender != tokenMessenger) revert OnlyTokenMessenger();
         // Fixed header: 4+32+32+32+32+32+4 = 168 bytes.
         // [164:168] is minFinalityThreshold (uint32), NOT a hookData length prefix.
@@ -138,14 +142,22 @@ contract TimeLockHook {
         // Parse amount at offset 68
         uint256 amount = uint256(bytes32(messageBody[68:100]));
 
+        // Parse messageSender at offset 100 — this is the CrosschainEscrow address (left-padded
+        // to 32 bytes) that actually called depositForBurnWithHook on the source chain.
+        // Circle's outer CCTP message 'sender' is always TokenMessengerV2 on source, so we
+        // read the inner BurnMessageV2 messageSender field instead. The frontend pre-computes
+        // releaseId using CONTRACT_ADDRESSES.CROSSCHAIN_ESCROW (same value), so IDs match.
+        bytes32 messageSender = bytes32(messageBody[100:132]);
+
         // hookData: everything from offset 168 to end (no length prefix in BurnMessageV2)
         bytes calldata hookData = messageBody[168:];
 
         // Decode hookData: (finalRecipient, unlockTimestamp)
         (address finalRecipient, uint256 unlockTimestamp) = abi.decode(hookData, (address, uint256));
 
-        // Deterministic, pre-computable release ID (no state increment needed)
-        bytes32 releaseId = _computeReleaseId(sourceDomain, sender, finalRecipient, amount, unlockTimestamp);
+        // Deterministic, pre-computable release ID (no state increment needed).
+        // Uses messageSender (CrosschainEscrow) not the outer sender (TokenMessengerV2).
+        bytes32 releaseId = _computeReleaseId(sourceDomain, messageSender, finalRecipient, amount, unlockTimestamp);
 
         if (pendingReleases[releaseId].recipient != address(0)) revert ReleaseAlreadyExists();
 
