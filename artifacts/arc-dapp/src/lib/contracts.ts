@@ -152,9 +152,9 @@ export const TIME_LOCK_HOOK_ABI = [
  * Then fill in the address below for each chain.
  */
 export const TIME_LOCK_HOOK_ADDRESSES: Record<string, `0x${string}` | null> = {
-  "Ethereum Sepolia": "0x1985cE53D2a2eAFA05cD7e3FfBdbD16EDBC674c7",
+  "Ethereum Sepolia": "0x003f131f247EA8f8894B2edc8E41136be6F1EC94",
   "Base Sepolia":     null, // deployer wallet needs Base Sepolia ETH — see replit.md
-  "Arbitrum Sepolia": "0xE1017349D0455B6a2F220A55658B2A088F16f6e8",
+  "Arbitrum Sepolia": "0xA5483717601038FC841b63a6e419897Fc58E7f84",
 };
 
 /**
@@ -188,15 +188,18 @@ export const MESSAGE_TRANSMITTER_V2_ADDRESS = "0xE737e5cEBEEBa77EFE34D4aa0907565
  * Encode hookData for a time-lock CCTP v2 transfer.
  * This is passed to CrosschainEscrow.initiateConditionalTransfer() as the `hookData` arg.
  *
- * Layout: abi.encode(address finalRecipient, uint256 unlockTimestamp)
+ * Circle passes this verbatim as `messageBody` to TimeLockHook.handleReceiveMessage().
+ * Layout (96 bytes): abi.encode(address finalRecipient, uint256 unlockTimestamp, uint256 amount)
+ * Amount is included so the hook knows how much USDC to release on claim.
  */
 export function encodeTimeLockHookData(
   finalRecipient: Address,
   unlockTimestamp: bigint,
+  amount: bigint,
 ): `0x${string}` {
   return encodeAbiParameters(
-    [{ type: "address" }, { type: "uint256" }],
-    [finalRecipient, unlockTimestamp],
+    [{ type: "address" }, { type: "uint256" }, { type: "uint256" }],
+    [finalRecipient, unlockTimestamp, amount],
   );
 }
 

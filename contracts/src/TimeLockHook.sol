@@ -4,53 +4,49 @@ pragma solidity ^0.8.20;
 import "./IERC20.sol";
 
 /**
- * @title TimeLockHook
+ * @title TimeLockHook (v5 — hookData-only design)
  * @notice CCTP v2 hook contract deployed on destination chains (e.g. Ethereum Sepolia).
  *
  * ┌─────────────────────────────────────────────────────────────────────────────┐
  * │  FLOW                                                                       │
  * │                                                                             │
- * │  1. Sender on Arc Testnet calls:                                            │
- * │       CrosschainEscrow.initiateConditionalTransfer(                         │
- * │         recipient  = address(TimeLockHook),   ← this contract on dest      │
- * │         hookData   = abi.encode(finalRecipient, unlockTimestamp),           │
- * │         ...                                                                 │
- * │       )                                                                     │
+ * │  1. Sender on Arc calls CrosschainEscrow.initiateConditionalTransfer with:  │
+ * │       recipient  = address(TimeLockHook)  ← this contract on dest chain    │
+ * │       hookData   = abi.encode(finalRecipient, unlockTimestamp, amount)      │
  * │                                                                             │
- * │  2. Circle attests the burn. Anyone calls:                                  │
+ * │  2. Circle attests. Anyone calls:                                           │
  * │       MessageTransmitterV2.receiveMessage(messageBytes, attestation)        │
  * │     → TokenMessengerV2 mints USDC to address(TimeLockHook)                 │
- * │     → TokenMessengerV2 calls TimeLockHook.handleReceiveMessage(...)         │
- * │       (msg.sender = TokenMessengerV2, NOT MessageTransmitterV2)             │
+ * │     → TokenMessengerV2 calls TimeLockHook.handleReceiveMessage(             │
+ * │           sourceDomain,                                                     │
+ * │           sender,       ← CrosschainEscrow on source chain (bytes32)       │
+ * │           hookData      ← the raw hookData bytes from the burn, NOT        │
+ * │                            the full BurnMessageV2 struct                    │
+ * │         )                                                                   │
  * │                                                                             │
- * │  3. TimeLockHook stores a PendingRelease from decoded hookData.             │
+ * │  3. TimeLockHook decodes hookData and stores a PendingRelease.             │
  * │                                                                             │
  * │  4. After unlockTimestamp, finalRecipient calls:                            │
  * │       TimeLockHook.claim(releaseId)                                         │
  * │     → USDC transferred to finalRecipient                                   │
  * └─────────────────────────────────────────────────────────────────────────────┘
  *
- * hookData encoding:
- *   abi.encode(address finalRecipient, uint256 unlockTimestamp)
+ * KEY DESIGN INSIGHT:
+ *   Circle passes hookData (not the full BurnMessageV2) as the `messageBody`
+ *   parameter to handleReceiveMessage. The `sender` parameter is the address
+ *   that called depositForBurnWithHook on the source chain = CrosschainEscrow.
+ *
+ * hookData encoding (96 bytes):
+ *   abi.encode(address finalRecipient, uint256 unlockTimestamp, uint256 amount)
+ *   Amount is included so the contract knows how much USDC to release on claim.
  *
  * releaseId (deterministic, pre-computable by frontend):
- *   keccak256(abi.encode(sourceDomain, messageSender_bytes32, finalRecipient, amount, unlockTimestamp))
- *
- * BurnMessageV2 packed layout (all offsets in bytes):
- *   [0:4]    version              uint32   (4 bytes)
- *   [4:36]   burnToken            bytes32  (32 bytes)
- *   [36:68]  mintRecipient        bytes32  (32 bytes)
- *   [68:100] amount               uint256  (32 bytes)
- *   [100:132] messageSender       bytes32  (32 bytes)
- *   [132:164] maxFee              uint256  (32 bytes)
- *   [164:168] minFinalityThreshold uint32  (4 bytes) ← NOT a hookData length prefix
- *   [168:]   hookData             bytes    (no length prefix; runs to end of messageBody)
+ *   keccak256(abi.encode(sourceDomain, sender_bytes32, finalRecipient, amount, unlockTimestamp))
+ *   where sender_bytes32 = CrosschainEscrow left-padded to bytes32.
  *
  * Caller hierarchy on destination chain:
- *   MessageTransmitterV2 (0xE737...275) calls TokenMessengerV2
- *   TokenMessengerV2     (0x8FE6...DAA) calls handleReceiveMessage on mintRecipient ← us
- *
- * Both addresses are deployed via CREATE2 at the same address on all CCTP v2 chains.
+ *   MessageTransmitterV2 (0xE737...275) → TokenMessengerV2 (0x8FE6...DAA) → us
+ *   msg.sender in handleReceiveMessage = TokenMessengerV2
  */
 contract TimeLockHook {
 
@@ -99,11 +95,6 @@ contract TimeLockHook {
 
     // ─── Constructor ──────────────────────────────────────────────────────────
 
-    /**
-     * @param _tokenMessenger Circle TokenMessengerV2 on this (destination) chain.
-     *                        This is the contract that calls handleReceiveMessage after minting.
-     * @param _usdc           USDC address on this (destination) chain.
-     */
     constructor(address _tokenMessenger, address _usdc) {
         tokenMessenger = _tokenMessenger;
         usdc = _usdc;
@@ -114,50 +105,35 @@ contract TimeLockHook {
     /**
      * @notice Called by TokenMessengerV2 after minting USDC to this contract.
      *
-     * @dev msg.sender MUST be the Circle TokenMessengerV2 on this chain (not MessageTransmitterV2).
-     *      Call chain: receiveMessage() → MessageTransmitterV2 → TokenMessengerV2 → handleReceiveMessage()
-     *      Parses amount and hookData directly from the packed BurnMessageV2 body.
+     * @dev msg.sender MUST be the Circle TokenMessengerV2 on this chain.
+     *      Call chain: receiveMessage() → MessageTransmitterV2 → TokenMessengerV2 → us
      *
-     * @param sourceDomain   Source chain CCTP domain (Arc Testnet = 26).
-     * @param sender         Outer CCTP message sender — this is TokenMessengerV2 on the source chain,
-     *                       NOT CrosschainEscrow. We do NOT use it for releaseId; we read messageSender
-     *                       from the BurnMessageV2 body instead (offset [100:132] = CrosschainEscrow).
-     * @param messageBody    Packed BurnMessageV2 bytes — see layout in file header.
+     *      IMPORTANT: `messageBody` is the raw hookData bytes passed to depositForBurnWithHook
+     *      on the source chain. It is NOT the full BurnMessageV2 struct.
+     *
+     *      `sender` is the address that called depositForBurnWithHook = CrosschainEscrow (bytes32).
+     *
+     * @param sourceDomain  Source chain CCTP domain (Arc Testnet = 26).
+     * @param sender        CrosschainEscrow address on source chain, left-padded to bytes32.
+     * @param messageBody   Raw hookData = abi.encode(finalRecipient, unlockTimestamp, amount).
      */
     function handleReceiveMessage(
         uint32  sourceDomain,
         bytes32 sender,
         bytes calldata messageBody
     ) external returns (bool) {
-        // silence unused-variable warning — we read messageSender from body below
-        sender;
-
         if (msg.sender != tokenMessenger) revert OnlyTokenMessenger();
-        // Fixed header: 4+32+32+32+32+32+4 = 168 bytes.
-        // [164:168] is minFinalityThreshold (uint32), NOT a hookData length prefix.
-        // hookData begins at offset 168 and runs to the end of messageBody.
-        // Our hookData is always abi.encode(address, uint256) = 64 bytes minimum.
-        if (messageBody.length < 168 + 64) revert MessageTooShort();
 
-        // Parse amount at offset 68
-        uint256 amount = uint256(bytes32(messageBody[68:100]));
+        // hookData = abi.encode(address, uint256, uint256) = 96 bytes minimum
+        if (messageBody.length < 96) revert MessageTooShort();
 
-        // Parse messageSender at offset 100 — this is the CrosschainEscrow address (left-padded
-        // to 32 bytes) that actually called depositForBurnWithHook on the source chain.
-        // Circle's outer CCTP message 'sender' is always TokenMessengerV2 on source, so we
-        // read the inner BurnMessageV2 messageSender field instead. The frontend pre-computes
-        // releaseId using CONTRACT_ADDRESSES.CROSSCHAIN_ESCROW (same value), so IDs match.
-        bytes32 messageSender = bytes32(messageBody[100:132]);
+        // Decode hookData: (finalRecipient, unlockTimestamp, amount)
+        (address finalRecipient, uint256 unlockTimestamp, uint256 amount) =
+            abi.decode(messageBody, (address, uint256, uint256));
 
-        // hookData: everything from offset 168 to end (no length prefix in BurnMessageV2)
-        bytes calldata hookData = messageBody[168:];
-
-        // Decode hookData: (finalRecipient, unlockTimestamp)
-        (address finalRecipient, uint256 unlockTimestamp) = abi.decode(hookData, (address, uint256));
-
-        // Deterministic, pre-computable release ID (no state increment needed).
-        // Uses messageSender (CrosschainEscrow) not the outer sender (TokenMessengerV2).
-        bytes32 releaseId = _computeReleaseId(sourceDomain, messageSender, finalRecipient, amount, unlockTimestamp);
+        // Deterministic release ID — matches frontend's computeTimeLockReleaseId().
+        // Uses `sender` = CrosschainEscrow bytes32 (left-padded) as passed by Circle.
+        bytes32 releaseId = _computeReleaseId(sourceDomain, sender, finalRecipient, amount, unlockTimestamp);
 
         if (pendingReleases[releaseId].recipient != address(0)) revert ReleaseAlreadyExists();
 
@@ -176,9 +152,7 @@ contract TimeLockHook {
 
     /**
      * @notice Claim time-locked USDC after the unlock timestamp.
-     *
-     * @param releaseId  The release ID emitted in the ReleaseScheduled event, or
-     *                   pre-computed by the frontend using computeReleaseId().
+     * @param releaseId  The release ID emitted in the ReleaseScheduled event or pre-computed.
      */
     function claim(bytes32 releaseId) external {
         PendingRelease storage r = pendingReleases[releaseId];
@@ -196,9 +170,6 @@ contract TimeLockHook {
 
     // ─── Views ────────────────────────────────────────────────────────────────
 
-    /**
-     * @notice Get the full state of a pending release.
-     */
     function getRelease(bytes32 releaseId) external view returns (
         address recipient,
         uint256 amount,
@@ -218,12 +189,10 @@ contract TimeLockHook {
 
     /**
      * @notice Pre-compute the releaseId for a pending transfer (matches handleReceiveMessage).
-     *         Frontend can call this off-chain to know the releaseId before bridging completes.
-     *
      * @param sourceDomain     CCTP domain of source chain (Arc = 26).
      * @param messageSender    CrosschainEscrow address on source chain, left-padded to bytes32.
      * @param finalRecipient   Address that will receive USDC after unlock.
-     * @param amount           USDC amount (6 decimals).
+     * @param amount           USDC amount (6 decimals), same value encoded in hookData.
      * @param unlockTimestamp  Unix timestamp after which claim() is allowed.
      */
     function computeReleaseId(

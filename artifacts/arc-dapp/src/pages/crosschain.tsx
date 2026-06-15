@@ -754,7 +754,7 @@ export default function Crosschain() {
         );
         const hookAddr = TIME_LOCK_HOOK_ADDRESSES[formData.destChain]!;
         contractRecipient = hookAddr;
-        encodedHookData   = encodeTimeLockHookData(formData.recipient as Address, unlockTimestamp);
+        encodedHookData   = encodeTimeLockHookData(formData.recipient as Address, unlockTimestamp, rawAmount);
 
         const releaseId = computeTimeLockReleaseId(
           ARC_CCTP_DOMAIN,
