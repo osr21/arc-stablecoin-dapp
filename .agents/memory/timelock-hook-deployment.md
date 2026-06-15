@@ -51,13 +51,22 @@ Original code read minFinalityThreshold (2000) as hookDataLen, then checked mess
 which always failed (actual body = 232 bytes) → HookDataTooShort revert → gas estimation fail.
 Fix: `bytes calldata hookData = messageBody[168:]` with minimum size check `< 168+64`.
 
-## CRITICAL BUG 3 (fixed): releaseId sender mismatch (claim: ReleaseNotFound 0x28663ff8)
+## CRITICAL BUG 3 (fixed in contract): releaseId outer-sender mismatch
 Circle's outer CCTP message passes `sender = TokenMessengerV2 on source chain` to handleReceiveMessage.
 The contract was computing releaseId with this outer sender.
-The frontend computes releaseId using CONTRACT_ADDRESSES.CROSSCHAIN_ESCROW.
-These never match → claim() always gets ReleaseNotFound (0x28663ff8).
-Fix: read `messageSender = bytes32(messageBody[100:132])` from BurnMessageV2 body instead.
-This IS CrosschainEscrow (left-padded to 32 bytes), matching what the frontend uses.
+Fix: read `messageSender = bytes32(messageBody[100:132])` from BurnMessageV2 body (= CrosschainEscrow).
+
+## CRITICAL BUG 4 (fixed in frontend): padHex dir:'right' → ReleaseNotFound (0x28663ff8)
+viem's `padHex(address, {size:32})` defaults to dir:'right' (appends zeros).
+CCTP BurnMessageV2 encodes messageSender as bytes32 LEFT-padded (standard EVM address encoding).
+Contract keccak used left-padded value; frontend keccak used right-padded → every releaseId mismatch.
+Fix: `padHex(crosschainEscrow, { size: 32, dir: 'left' })` in computeTimeLockReleaseId().
+Rule: ALWAYS specify dir:'left' when converting an Ethereum address to bytes32 for keccak hashing.
+
+## Architectural fix: store hookAddress in hook_data at burn time
+Claim always used TIME_LOCK_HOOK_ADDRESSES[destChain] (current address). Any redeployment broke
+all in-flight transfers. Fix: store hookAddress in timeLockMetaJson at burn time; prefer it when
+claiming. TimeLockMeta.hookAddress field added to the interface.
 
 To deploy on Base Sepolia once funded, run:
 ```bash

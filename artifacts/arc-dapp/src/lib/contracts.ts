@@ -219,8 +219,9 @@ export function computeTimeLockReleaseId(
   amount: bigint,
   unlockTimestamp: bigint,
 ): `0x${string}` {
-  // CCTP encodes addresses as left-padded bytes32 (messageSender field in BurnMessageV2)
-  const messageSenderBytes32 = padHex(crosschainEscrow, { size: 32 });
+  // CCTP encodes addresses as LEFT-padded bytes32 (messageSender field in BurnMessageV2).
+  // padHex defaults to dir:'right' — must explicitly specify dir:'left' to match EVM encoding.
+  const messageSenderBytes32 = padHex(crosschainEscrow, { size: 32, dir: 'left' });
   return keccak256(
     encodeAbiParameters(
       [

@@ -26,6 +26,7 @@ interface TimeLockMeta {
   releaseId: `0x${string}`;
   unlockTimestamp: number;
   finalRecipient: string;
+  hookAddress?: string;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -238,7 +239,8 @@ function ReceiveDialog({
   const handleTimeLockClaim = async () => {
     if (!timeLockMeta) return;
     if (!destConfig) { setErr("Destination chain config not found"); return; }
-    const hookAddress = TIME_LOCK_HOOK_ADDRESSES[destChain];
+    // Prefer the address recorded at burn time (guards against redeployment breaking in-flight transfers)
+    const hookAddress = (timeLockMeta.hookAddress as `0x${string}` | undefined) ?? TIME_LOCK_HOOK_ADDRESSES[destChain];
     if (!hookAddress) { setErr(`TimeLockHook not deployed on ${destChain} — deploy contracts/src/TimeLockHook.sol first`); return; }
 
     const eth = (window as any).ethereum;
@@ -734,6 +736,7 @@ export default function Crosschain() {
           releaseId,
           unlockTimestamp: Number(unlockTimestamp),
           finalRecipient:  formData.recipient,
+          hookAddress:     hookAddr,
         });
       }
 
