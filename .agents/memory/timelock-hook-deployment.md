@@ -34,9 +34,15 @@ TimeLockHook.handleReceiveMessage() parses amount (offset 68) and hookData (offs
 ## Deployed addresses
 | Contract | Chain | Address |
 |---|---|---|
-| TimeLockHook | Ethereum Sepolia (11155111) | 0x6f9E0D1745079A1C14B6546F13Bfc6ccd3d305E5 |
-| TimeLockHook | Arbitrum Sepolia (421614) | 0xfeC8d9ceC403817514dA770832fc92b64E3a3b3e |
+| TimeLockHook | Ethereum Sepolia (11155111) | 0x195B1559D5d1b032d65Bbc2b68B4D1D23739F8A6 |
+| TimeLockHook | Arbitrum Sepolia (421614) | 0x33486F8008a1A3F69982615F7A0D50B4Dc1C273C |
 | TimeLockHook | Base Sepolia (84532) | NOT deployed — deployer wallet has no Base Sepolia ETH |
+
+## CRITICAL BUG (fixed): wrong caller guard
+Original contract checked `msg.sender == messageTransmitter` (MessageTransmitterV2).
+Actual call chain is: MessageTransmitterV2 → TokenMessengerV2 → hook.handleReceiveMessage()
+So msg.sender is TokenMessengerV2, not MessageTransmitterV2. Every receiveMessage reverted.
+Fix: constructor now takes TOKEN_MESSENGER_V2 (0x8FE6...DAA), stored as `tokenMessenger`, checked in guard.
 
 To deploy on Base Sepolia once funded, run:
 ```bash

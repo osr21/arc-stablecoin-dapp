@@ -18,9 +18,10 @@ import "./IERC20.sol";
  * │       )                                                                     │
  * │                                                                             │
  * │  2. Circle attests the burn. Anyone calls:                                  │
- * │       MessageTransmitter.receiveMessage(messageBytes, attestation)          │
+ * │       MessageTransmitterV2.receiveMessage(messageBytes, attestation)        │
  * │     → TokenMessengerV2 mints USDC to address(TimeLockHook)                 │
  * │     → TokenMessengerV2 calls TimeLockHook.handleReceiveMessage(...)         │
+ * │       (msg.sender = TokenMessengerV2, NOT MessageTransmitterV2)             │
  * │                                                                             │
  * │  3. TimeLockHook stores a PendingRelease from decoded hookData.             │
  * │                                                                             │
@@ -45,20 +46,19 @@ import "./IERC20.sol";
  *   [164:168] hookDataLen    uint32
  *   [168:]   hookData        bytes
  *
- * Deployment addresses:
- *   Ethereum Sepolia MessageTransmitterV2: 0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275 (*)
- *   Ethereum Sepolia USDC:                0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238
- *   (*) verify at https://developers.circle.com/stablecoins/docs/evm-smart-contracts
+ * Caller hierarchy on destination chain:
+ *   MessageTransmitterV2 (0xE737...275) calls TokenMessengerV2
+ *   TokenMessengerV2     (0x8FE6...DAA) calls handleReceiveMessage on mintRecipient ← us
  *
- * NOTE: Circle's CCTP v2 hook interface calls handleReceiveMessage on mintRecipient
- *       after minting. If the function selector does not match the deployed
- *       TokenMessengerV2, check Circle's latest IMessageHandlerV2 interface.
+ * Both addresses are deployed via CREATE2 at the same address on all CCTP v2 chains.
  */
 contract TimeLockHook {
 
     // ─── State ────────────────────────────────────────────────────────────────
 
-    address public immutable messageTransmitter;
+    /// @notice The Circle TokenMessengerV2 on this chain — the ONLY allowed caller of
+    ///         handleReceiveMessage(). This is TokenMessengerV2, not MessageTransmitterV2.
+    address public immutable tokenMessenger;
     address public immutable usdc;
 
     struct PendingRelease {
@@ -89,7 +89,7 @@ contract TimeLockHook {
 
     // ─── Errors ───────────────────────────────────────────────────────────────
 
-    error OnlyMessageTransmitter();
+    error OnlyTokenMessenger();
     error MessageTooShort();
     error HookDataTooShort();
     error ReleaseAlreadyExists();
@@ -101,11 +101,12 @@ contract TimeLockHook {
     // ─── Constructor ──────────────────────────────────────────────────────────
 
     /**
-     * @param _messageTransmitter Circle MessageTransmitterV2 on this (destination) chain.
-     * @param _usdc               USDC address on this (destination) chain.
+     * @param _tokenMessenger Circle TokenMessengerV2 on this (destination) chain.
+     *                        This is the contract that calls handleReceiveMessage after minting.
+     * @param _usdc           USDC address on this (destination) chain.
      */
-    constructor(address _messageTransmitter, address _usdc) {
-        messageTransmitter = _messageTransmitter;
+    constructor(address _tokenMessenger, address _usdc) {
+        tokenMessenger = _tokenMessenger;
         usdc = _usdc;
     }
 
@@ -114,7 +115,8 @@ contract TimeLockHook {
     /**
      * @notice Called by TokenMessengerV2 after minting USDC to this contract.
      *
-     * @dev msg.sender MUST be the Circle MessageTransmitterV2 on this chain.
+     * @dev msg.sender MUST be the Circle TokenMessengerV2 on this chain (not MessageTransmitterV2).
+     *      Call chain: receiveMessage() → MessageTransmitterV2 → TokenMessengerV2 → handleReceiveMessage()
      *      Parses amount and hookData directly from the packed BurnMessageV2 body.
      *
      * @param sourceDomain   Source chain CCTP domain (Arc Testnet = 26).
@@ -127,9 +129,9 @@ contract TimeLockHook {
         bytes32 sender,
         bytes calldata messageBody
     ) external returns (bool) {
-        if (msg.sender != messageTransmitter) revert OnlyMessageTransmitter();
+        if (msg.sender != tokenMessenger) revert OnlyTokenMessenger();
         // minimum: 4+32+32+32+32+32+4 = 168 bytes
-        if (messageBody.length < 168)         revert MessageTooShort();
+        if (messageBody.length < 168)     revert MessageTooShort();
 
         // Parse amount at offset 68
         uint256 amount = uint256(bytes32(messageBody[68:100]));
