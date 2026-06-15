@@ -1,69 +1,45 @@
 import { Router } from "express";
-import { keccak256 } from "viem";
 import { logger } from "../lib/logger";
 
 const router = Router();
 
-const IRIS_API_BASE = "https://iris-api-sandbox.circle.com";
-const ARC_RPC = "https://rpc.testnet.arc.network";
-const MESSAGE_SENT_TOPIC =
-  "0x8c5261668696ce22758910d05bab8f186d6eb247ceac2af2e82c7dc17669b036";
-// 0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275 — same CREATE2 address on all chains
-const MESSAGE_TRANSMITTER_V2 =
-  "0xe737e5cebeeba77efe34d4aa090756590b1ce275";
+const BRIDGE_BASE = "https://arc-relay-bridge.replit.app";
+const ARC_SRC_DOMAIN = 26;
+const RELAY_FEE = "1000000"; // 1 USDC covers gas on destination chain
 
-// Receive target: Ethereum Sepolia MessageTransmitterV2 (same address as Arc — Circle CREATE2 deployment)
-const RECEIVE_TARGET_BY_DOMAIN: Record<number, { chain: string; address: string; explorerBase: string }> = {
-  0: { chain: "Ethereum Sepolia", address: "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275", explorerBase: "https://sepolia.etherscan.io/address" },
-  3: { chain: "Arbitrum Sepolia", address: "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275", explorerBase: "https://sepolia.arbiscan.io/address" },
-  6: { chain: "Base Sepolia",     address: "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275", explorerBase: "https://sepolia.basescan.org/address" },
+// Maps CCTP destination domain → chain info for frontend
+const DOMAIN_TO_CHAIN: Record<number, { chain: string; chainId: number; explorerBase: string; explorerTx: string }> = {
+  0: { chain: "Ethereum Sepolia", chainId: 11155111, explorerBase: "https://sepolia.etherscan.io/address", explorerTx: "https://sepolia.etherscan.io/tx" },
+  3: { chain: "Arbitrum Sepolia", chainId: 421614,   explorerBase: "https://sepolia.arbiscan.io/address",  explorerTx: "https://sepolia.arbiscan.io/tx"  },
+  6: { chain: "Base Sepolia",     chainId: 84532,    explorerBase: "https://sepolia.basescan.org/address", explorerTx: "https://sepolia.basescan.org/tx" },
 };
 
-function decodeMsgSentLog(data: string): `0x${string}` | null {
-  try {
-    const hex = data.replace("0x", "");
-    const len = parseInt(hex.slice(64, 128), 16);
-    return ("0x" + hex.slice(128, 128 + len * 2)) as `0x${string}`;
-  } catch {
-    return null;
-  }
+interface BridgeMessage {
+  attestation: string;
+  message: string;
+  status: string;
+  decodedMessage?: {
+    destinationDomain?: string;
+    decodedMessageBody?: {
+      mintRecipient?: string;
+      amount?: string;
+    };
+  };
 }
 
-async function fetchMessageBytes(txHash: string): Promise<{
-  messageBytes: `0x${string}`;
-  destinationDomain: number;
-} | null> {
-  const resp = await fetch(ARC_RPC, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      method: "eth_getTransactionReceipt",
-      params: [txHash],
-      id: 1,
-    }),
-  });
-  const json = (await resp.json()) as { result?: { logs?: { address: string; topics: string[]; data: string }[] } };
-  const logs = json.result?.logs ?? [];
-
-  const log =
-    logs.find(
-      (l) =>
-        l.address?.toLowerCase() === MESSAGE_TRANSMITTER_V2 &&
-        l.topics?.[0] === MESSAGE_SENT_TOPIC
-    ) ?? logs.find((l) => l.topics?.[0] === MESSAGE_SENT_TOPIC);
-  if (!log) return null;
-
-  const messageBytes = decodeMsgSentLog(log.data);
-  if (!messageBytes) return null;
-
-  // Parse destination domain from message: version(4) srcDomain(4) destDomain(4) ...
-  const msgHex = messageBytes.replace("0x", "");
-  const destinationDomain = parseInt(msgHex.slice(16, 24), 16);
-
-  return { messageBytes, destinationDomain };
+// Fetch attestation + message bytes from arc-relay-bridge (supports Arc domain 26)
+async function fetchBridgeAttestation(txHash: string): Promise<BridgeMessage | null> {
+  const url = `${BRIDGE_BASE}/api/attest?domain=${ARC_SRC_DOMAIN}&txHash=${txHash}`;
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { messages?: BridgeMessage[] };
+  const msg = data.messages?.[0];
+  if (!msg) return null;
+  return msg;
 }
 
+// GET /attestation/:txHash
+// Returns attestation status, message bytes, and receive target for a given Arc burn tx
 router.get("/attestation/:txHash", async (req, res) => {
   const { txHash } = req.params;
 
@@ -72,65 +48,99 @@ router.get("/attestation/:txHash", async (req, res) => {
   }
 
   try {
-    // Step 1: Get message bytes from Arc transaction receipt
-    const msgResult = await fetchMessageBytes(txHash);
-    if (!msgResult) {
+    const msg = await fetchBridgeAttestation(txHash);
+
+    if (!msg) {
       return res.status(202).json({
         txHash,
         status: "pending_confirmations",
-        messageHash: null,
         messageBytes: null,
         attestation: null,
         receiveTarget: null,
+        relayFeeUsdc: null,
       });
     }
 
-    const { messageBytes, destinationDomain } = msgResult;
+    const destDomain = parseInt(msg.decodedMessage?.destinationDomain ?? "-1", 10);
+    const receiveTarget = DOMAIN_TO_CHAIN[destDomain] ?? null;
+    const mintRecipient = msg.decodedMessage?.decodedMessageBody?.mintRecipient ?? null;
+    const isComplete = msg.status === "complete" && !!msg.attestation && msg.attestation !== "PENDING";
 
-    // Step 2: Compute keccak256(messageBytes) = messageHash for IRIS lookup
-    const msgBuf = Buffer.from(messageBytes.replace("0x", ""), "hex");
-    const messageHash = keccak256(msgBuf as unknown as `0x${string}`);
-
-    // Step 3: Query IRIS attestations endpoint
-    const irisUrl = `${IRIS_API_BASE}/attestations/${messageHash}`;
-    const irisRes = await fetch(irisUrl, {
-      headers: { Accept: "application/json" },
-    });
-
-    const irisData = (await irisRes.json()) as { status?: string; attestation?: string; error?: string };
-
-    const receiveTarget = RECEIVE_TARGET_BY_DOMAIN[destinationDomain] ?? null;
-
-    if (irisData.attestation && irisData.attestation !== "PENDING") {
-      return res.json({
-        txHash,
-        status: "complete",
-        messageHash,
-        messageBytes,
-        attestation: irisData.attestation,
-        receiveTarget,
-      });
-    }
-
-    const pending = irisData.status === "pending_confirmations" || irisData.error === "Message hash not found";
-    return res.status(202).json({
+    return res.status(isComplete ? 200 : 202).json({
       txHash,
-      status: pending ? "pending_confirmations" : (irisData.status ?? "pending_confirmations"),
-      messageHash,
-      messageBytes,
-      attestation: null,
+      status: isComplete ? "complete" : "pending_confirmations",
+      messageBytes: msg.message ?? null,
+      attestation: isComplete ? msg.attestation : null,
       receiveTarget,
+      mintRecipient,
+      relayFeeUsdc: "1.00", // bridge charges 1 USDC for gas-free relay
     });
   } catch (err) {
     logger.error({ err, txHash }, "CCTP attestation fetch failed");
     return res.status(202).json({
       txHash,
       status: "pending_confirmations",
-      messageHash: null,
       messageBytes: null,
       attestation: null,
       receiveTarget: null,
+      relayFeeUsdc: null,
     });
+  }
+});
+
+// POST /relay
+// Gas-free relay: arc-relay-bridge server mints USDC on destination (1 USDC fee)
+// Body: { burnTxHash } — server fetches attestation and relays
+router.post("/relay", async (req, res) => {
+  const { burnTxHash } = req.body as { burnTxHash?: string };
+
+  if (!burnTxHash || !/^0x[0-9a-fA-F]{64}$/.test(burnTxHash)) {
+    return res.status(400).json({ error: "Invalid burnTxHash" });
+  }
+
+  try {
+    // 1. Fetch attestation from bridge
+    const msg = await fetchBridgeAttestation(burnTxHash);
+    if (!msg || msg.status !== "complete" || !msg.attestation) {
+      return res.status(202).json({ error: "Attestation not yet ready" });
+    }
+
+    const destDomain = parseInt(msg.decodedMessage?.destinationDomain ?? "-1", 10);
+    const chainInfo  = DOMAIN_TO_CHAIN[destDomain];
+    if (!chainInfo) {
+      return res.status(400).json({ error: `Unknown destination domain: ${destDomain}` });
+    }
+
+    const mintRecipient = msg.decodedMessage?.decodedMessageBody?.mintRecipient ?? "0x0000000000000000000000000000000000000000";
+
+    // 2. Submit gas-free relay via bridge
+    const relayRes = await fetch(`${BRIDGE_BASE}/api/relay`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message:     msg.message,
+        attestation: msg.attestation,
+        recipient:   mintRecipient,
+        destChainId: chainInfo.chainId,
+        maxFee:      RELAY_FEE,
+      }),
+    });
+
+    const relayData = (await relayRes.json()) as { txHash?: string; error?: string };
+
+    if (!relayRes.ok || !relayData.txHash) {
+      logger.error({ relayData, burnTxHash }, "Bridge relay failed");
+      return res.status(502).json({ error: relayData.error ?? "Relay failed" });
+    }
+
+    return res.json({
+      txHash:    relayData.txHash,
+      chain:     chainInfo.chain,
+      explorerTx: chainInfo.explorerTx,
+    });
+  } catch (err) {
+    logger.error({ err, burnTxHash }, "CCTP relay failed");
+    return res.status(500).json({ error: "Relay request failed" });
   }
 });
 

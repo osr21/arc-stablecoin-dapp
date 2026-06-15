@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useWallet } from "../lib/wallet";
 import { formatTokenAmount } from "../lib/format";
 import {
@@ -41,20 +42,28 @@ const RECEIVE_MESSAGE_ABI = [
 
 interface AttestationResult {
   status: string;
-  messageHash: string | null;
   messageBytes: string | null;
   attestation: string | null;
-  receiveTarget: { chain: string; address: string; explorerBase: string } | null;
+  mintRecipient: string | null;
+  receiveTarget: {
+    chain: string;
+    chainId: number;
+    explorerBase: string;
+    explorerTx: string;
+  } | null;
+  relayFeeUsdc: string | null;
 }
 
 function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: string }) {
-  const [open, setOpen]           = useState(false);
-  const [attest, setAttest]       = useState<AttestationResult | null>(null);
-  const [polling, setPolling]     = useState(false);
-  const [claiming, setClaiming]   = useState(false);
-  const [claimTx, setClaimTx]     = useState<string | null>(null);
-  const [claimErr, setClaimErr]   = useState<string | null>(null);
-  const [copied, setCopied]       = useState(false);
+  const [open, setOpen]             = useState(false);
+  const [attest, setAttest]         = useState<AttestationResult | null>(null);
+  const [polling, setPolling]       = useState(false);
+  const [relaying, setRelaying]     = useState(false);
+  const [claiming, setClaiming]     = useState(false);
+  const [relayTx, setRelayTx]       = useState<string | null>(null);
+  const [claimTx, setClaimTx]       = useState<string | null>(null);
+  const [err, setErr]               = useState<string | null>(null);
+  const [copied, setCopied]         = useState(false);
 
   const destConfig = DEST_CHAIN_CONFIGS[destChain];
 
@@ -83,17 +92,37 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const handleClaim = async () => {
+  // Option A: Gas-free relay via arc-relay-bridge (1 USDC fee, server mints)
+  const handleGaslessRelay = async () => {
+    setErr(null);
+    setRelaying(true);
+    try {
+      const res = await fetch("/api/cctp/relay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ burnTxHash: txHash }),
+      });
+      const data = await res.json() as { txHash?: string; error?: string; explorerTx?: string };
+      if (!res.ok || !data.txHash) throw new Error(data.error ?? "Relay failed");
+      setRelayTx(data.txHash);
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setRelaying(false);
+    }
+  };
+
+  // Option B: Self-relay via MetaMask (free, needs ETH on destination)
+  const handleSelfClaim = async () => {
     if (!attest?.messageBytes || !attest?.attestation) return;
-    if (!destConfig) { setClaimErr("Destination chain config not found"); return; }
+    if (!destConfig) { setErr("Destination chain config not found"); return; }
 
     const eth = (window as any).ethereum;
-    if (!eth) { setClaimErr("MetaMask required to claim"); return; }
+    if (!eth) { setErr("MetaMask required"); return; }
 
-    setClaimErr(null);
+    setErr(null);
     setClaiming(true);
     try {
-      // 1. Switch MetaMask to destination chain
       const chainHex = `0x${destConfig.chainId.toString(16)}`;
       try {
         await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chainHex }] });
@@ -108,15 +137,11 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
               rpcUrls: [destConfig.rpc],
             }],
           });
-        } else {
-          throw switchErr;
-        }
+        } else throw switchErr;
       }
 
-      // 2. Build a walletClient for the destination chain
       const accounts: string[] = await eth.request({ method: "eth_accounts" });
       const account = accounts[0] as Address;
-
       const destViemChain = {
         id: destConfig.chainId,
         name: destConfig.name,
@@ -127,7 +152,6 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
       const wc = createWalletClient({ chain: destViemChain as any, transport: custom(eth) });
       const pc = createPublicClient({ chain: destViemChain as any, transport: http(destConfig.rpc) });
 
-      // 3. Call receiveMessage on destination MessageTransmitterV2
       const hash = await wc.writeContract({
         address: MESSAGE_TRANSMITTER_V2_ADDRESS,
         abi: RECEIVE_MESSAGE_ABI,
@@ -136,18 +160,18 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
         account,
         chain: destViemChain as any,
       });
-
       await pc.waitForTransactionReceipt({ hash });
       setClaimTx(hash);
-    } catch (err: any) {
-      setClaimErr(err.shortMessage ?? err.message ?? "Claim failed");
+    } catch (e: any) {
+      setErr(e.shortMessage ?? e.message ?? "Claim failed");
     } finally {
       setClaiming(false);
     }
   };
 
-  const isReady = !!attest?.attestation;
-  const hasMsg  = !!attest?.messageBytes;
+  const isReady  = !!attest?.attestation;
+  const doneTx   = relayTx ?? claimTx;
+  const explorer = attest?.receiveTarget?.explorerTx ?? destConfig?.explorerTx;
 
   const calldata = isReady
     ? encodeFunctionData({
@@ -164,18 +188,18 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
           Receive ↗
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[580px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Receive on {destChain}</DialogTitle>
+          <DialogTitle>Receive USDC on {destChain}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 pt-2 text-sm">
           {/* Step progress */}
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
             {[
-              { label: "Burn on Arc",         done: true },
-              { label: "Circle attests",       done: isReady },
-              { label: "Mint on destination",  done: !!claimTx },
+              { label: "Burn on Arc",        done: true },
+              { label: "Circle attests",      done: isReady },
+              { label: "Mint on destination", done: !!doneTx },
             ].map((s, i) => (
               <div key={i} className={`rounded-md p-2 border ${s.done ? "border-green-500/40 bg-green-500/10 text-green-400" : "border-border bg-muted/40 text-muted-foreground"}`}>
                 <div className="font-semibold">{s.done ? "✓" : i + 1}</div>
@@ -184,106 +208,97 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
             ))}
           </div>
 
-          {/* Claim success */}
-          {claimTx && (
+          {/* Success */}
+          {doneTx && (
             <div className="rounded-md border border-green-500/40 bg-green-500/10 p-3 space-y-1">
               <p className="text-green-400 font-medium">✓ USDC minted on {destChain}</p>
-              <a
-                href={`${destConfig?.explorerTx}/${claimTx}`}
-                target="_blank" rel="noreferrer"
-                className="text-xs font-mono text-primary hover:underline break-all"
-              >
-                {claimTx} ↗
+              <a href={`${explorer}/${doneTx}`} target="_blank" rel="noreferrer"
+                className="text-xs font-mono text-primary hover:underline break-all">
+                {doneTx} ↗
               </a>
             </div>
           )}
 
-          {/* Attestation status + claim button */}
-          {!claimTx && (
-            <div className="rounded-md border border-border p-3 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Attestation</span>
-                <div className="flex items-center gap-2">
-                  <Badge variant={isReady ? "secondary" : "outline"}>
-                    {polling && !attest ? "Checking…" : isReady ? "Ready" : "Pending"}
-                  </Badge>
-                  <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={poll} disabled={polling}>
-                    {polling ? "…" : "Refresh"}
-                  </Button>
+          {/* Attestation status */}
+          {!doneTx && (
+            <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+              <span className="text-muted-foreground text-xs">Circle attestation</span>
+              <div className="flex items-center gap-2">
+                <Badge variant={isReady ? "secondary" : "outline"} className="text-xs">
+                  {polling && !attest ? "Checking…" : isReady ? "Ready ✓" : "Pending"}
+                </Badge>
+                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={poll} disabled={polling}>
+                  {polling ? "…" : "Refresh"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Receive options */}
+          {!doneTx && (
+            <Tabs defaultValue="gasless">
+              <TabsList className="w-full">
+                <TabsTrigger value="gasless" className="flex-1 text-xs">Gas-free Relay</TabsTrigger>
+                <TabsTrigger value="self" className="flex-1 text-xs">Self-relay (MetaMask)</TabsTrigger>
+              </TabsList>
+
+              {/* Tab A: Gas-free relay */}
+              <TabsContent value="gasless" className="space-y-3 pt-2">
+                <div className="rounded-md bg-muted/50 border border-border p-3 text-xs space-y-1 text-muted-foreground">
+                  <p>The arc-relay-bridge server submits the mint transaction on your behalf.</p>
+                  <p>You need <strong>no ETH</strong> on {destChain}. A relay fee of <strong>1 USDC</strong> is deducted from the received amount.</p>
                 </div>
-              </div>
-
-              {!isReady && (
-                <p className="text-xs text-muted-foreground">
-                  Circle IRIS monitors the Arc burn and signs off once the block is finalized (~10–30 min).
-                  Polling every 15 s.
-                </p>
-              )}
-
-              {/* Claim button */}
-              <Button
-                className="w-full"
-                disabled={!isReady || claiming || !destConfig}
-                onClick={handleClaim}
-              >
-                {claiming
-                  ? "Switching chain & claiming…"
-                  : isReady
-                  ? `Claim USDC on ${destChain}`
-                  : "Waiting for attestation…"}
-              </Button>
-              {claimErr && <p className="text-xs text-destructive">{claimErr}</p>}
-              {isReady && destConfig && (
-                <p className="text-xs text-muted-foreground text-center">
-                  MetaMask will switch to {destChain} and submit the receive transaction.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Message bytes — copy for manual use */}
-          {hasMsg && (
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-xs">Message bytes</span>
-                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => copyText(attest!.messageBytes!)}>
-                  {copied ? "Copied!" : "Copy"}
+                <Button className="w-full" disabled={!isReady || relaying} onClick={handleGaslessRelay}>
+                  {relaying ? "Relaying…" : isReady ? `Gas-free Relay to ${destChain} (−1 USDC fee)` : "Waiting for attestation…"}
                 </Button>
-              </div>
-              <div className="font-mono text-xs bg-muted rounded-md p-2 break-all leading-relaxed max-h-16 overflow-y-auto">
-                {attest!.messageBytes}
-              </div>
-            </div>
-          )}
+              </TabsContent>
 
-          {/* Attestation signature */}
-          {isReady && (
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-xs">Circle attestation</span>
-                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => copyText(attest!.attestation!)}>
-                  Copy
+              {/* Tab B: Self relay */}
+              <TabsContent value="self" className="space-y-3 pt-2">
+                <div className="rounded-md bg-muted/50 border border-border p-3 text-xs space-y-1 text-muted-foreground">
+                  <p>You call <code>receiveMessage</code> yourself. MetaMask switches to {destChain}.</p>
+                  <p>Receive full amount with <strong>no relay fee</strong>, but you need ETH on {destChain} for gas (~0.001 ETH).</p>
+                </div>
+                <Button className="w-full" variant="secondary" disabled={!isReady || claiming || !destConfig} onClick={handleSelfClaim}>
+                  {claiming ? "Switching chain & claiming…" : isReady ? `Claim Full Amount on ${destChain}` : "Waiting for attestation…"}
                 </Button>
-              </div>
-              <div className="font-mono text-xs bg-muted rounded-md p-2 break-all leading-relaxed max-h-16 overflow-y-auto">
-                {attest!.attestation}
-              </div>
-            </div>
+              </TabsContent>
+            </Tabs>
           )}
 
-          {/* Full calldata for manual/advanced use */}
-          {calldata && (
+          {err && <p className="text-xs text-destructive">{err}</p>}
+
+          {/* Message bytes + calldata (copy for advanced use) */}
+          {attest?.messageBytes && (
             <details className="text-xs">
               <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                Raw calldata (advanced)
+                Raw data (message bytes, calldata)
               </summary>
-              <div className="mt-2 space-y-1">
-                <div className="font-mono bg-muted rounded-md p-2 break-all leading-relaxed max-h-20 overflow-y-auto">
-                  {calldata}
+              <div className="mt-2 space-y-2">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-muted-foreground">Message bytes</span>
+                    <Button variant="ghost" size="sm" className="h-5 text-xs" onClick={() => copyText(attest.messageBytes!)}>
+                      {copied ? "Copied!" : "Copy"}
+                    </Button>
+                  </div>
+                  <div className="font-mono bg-muted rounded p-2 break-all leading-relaxed max-h-14 overflow-y-auto text-xs">
+                    {attest.messageBytes}
+                  </div>
                 </div>
-                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => copyText(calldata)}>
-                  Copy calldata
-                </Button>
+                {calldata && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-muted-foreground">receiveMessage calldata</span>
+                      <Button variant="ghost" size="sm" className="h-5 text-xs" onClick={() => copyText(calldata)}>
+                        Copy
+                      </Button>
+                    </div>
+                    <div className="font-mono bg-muted rounded p-2 break-all leading-relaxed max-h-14 overflow-y-auto text-xs">
+                      {calldata}
+                    </div>
+                  </div>
+                )}
               </div>
             </details>
           )}
@@ -293,11 +308,8 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
               Burn tx ↗
             </a>
             {attest?.receiveTarget && (
-              <a
-                href={`${attest.receiveTarget.explorerBase}/${attest.receiveTarget.address}#writeContract`}
-                target="_blank" rel="noreferrer"
-                className="text-primary hover:underline"
-              >
+              <a href={`${attest.receiveTarget.explorerBase}/0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275#writeContract`}
+                target="_blank" rel="noreferrer" className="text-primary hover:underline">
                 MessageTransmitterV2 on {destChain} ↗
               </a>
             )}
@@ -317,7 +329,7 @@ export default function Crosschain() {
   const [txPending, setTxPending]   = useState(false);
   const [formData, setFormData]     = useState({
     recipient:            "",
-    destChain:            "Base Sepolia",
+    destChain:            "Ethereum Sepolia",
     amount:               "",
     conditionDescription: "Unconditional CCTP transfer",
   });
@@ -339,7 +351,7 @@ export default function Crosschain() {
     setTxPending(true);
     try {
       const rawAmount  = parseToken(formData.amount);
-      const destDomain = DEST_DOMAINS[formData.destChain] ?? 6;
+      const destDomain = DEST_DOMAINS[formData.destChain] ?? 0;
 
       const approveTx = await walletClient.writeContract({
         address: CONTRACT_ADDRESSES.USDC,
@@ -394,7 +406,7 @@ export default function Crosschain() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Cross-chain Transfers</h1>
           <p className="text-muted-foreground mt-1">
-            CCTP v2 <code className="text-xs bg-muted px-1 rounded">depositForBurn</code>
+            CCTP v2 via CrosschainEscrow
             {" · "}
             <span className="font-mono text-xs">{CONTRACT_ADDRESSES.CROSSCHAIN_ESCROW}</span>
           </p>
@@ -410,7 +422,7 @@ export default function Crosschain() {
               <DialogHeader><DialogTitle>Initiate CCTP v2 Transfer</DialogTitle></DialogHeader>
               <form onSubmit={handleCreate} className="space-y-4 pt-4">
                 <div className="space-y-2">
-                  <Label>Sender</Label>
+                  <Label>Sender (you)</Label>
                   <Input value={address ?? ""} disabled className="bg-muted font-mono text-xs" />
                 </div>
                 <div className="space-y-2">
@@ -441,11 +453,12 @@ export default function Crosschain() {
                 <div className="space-y-2">
                   <Label>USDC Amount</Label>
                   <Input
-                    required type="number" step="0.000001" min="0.000001"
+                    required type="number" step="0.000001" min="1.000001"
                     value={formData.amount}
                     onChange={e => setFormData({ ...formData, amount: e.target.value })}
                     placeholder="0.00"
                   />
+                  <p className="text-xs text-muted-foreground">Minimum 1 USDC (relay fee) + transfer amount</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Condition Description</Label>
@@ -455,9 +468,8 @@ export default function Crosschain() {
                   />
                 </div>
                 <div className="bg-muted/50 rounded-md p-3 text-xs text-muted-foreground space-y-1">
-                  <p>CCTP Domain: {formData.destChain} → {DEST_DOMAINS[formData.destChain] ?? "?"}</p>
-                  <p>Two txs: approve USDC spend, then depositForBurn via CrosschainEscrow.</p>
-                  <p>Once Circle attests the burn, click <strong>Receive ↗</strong> in the table to mint USDC on the destination chain.</p>
+                  <p>Two txs: approve USDC spend, then burn via CrosschainEscrow → CCTP v2.</p>
+                  <p>After burn, click <strong>Receive ↗</strong> to mint on the destination chain — no ETH needed with gas-free relay.</p>
                 </div>
                 <Button type="submit" className="w-full mt-4" disabled={txPending}>
                   {txPending ? "Waiting for wallet…" : "Approve & Burn via CCTP v2"}
