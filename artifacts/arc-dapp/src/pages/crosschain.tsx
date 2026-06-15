@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { createWalletClient, createPublicClient, custom, http, encodeFunctionData, isAddress } from "viem";
+import { createWalletClient, createPublicClient, custom, http, encodeFunctionData, isAddress, parseEventLogs } from "viem";
 import { useListCrosschainTransfers, useCreateCrosschainTransfer, useUpdateCrosschainTransferStatus, getListCrosschainTransfersQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -15,15 +15,15 @@ import { formatTokenAmount } from "../lib/format";
 import {
   CONTRACT_ADDRESSES, CROSSCHAIN_ESCROW_ABI, ERC20_ABI, DEST_DOMAINS,
   DEST_CHAIN_CONFIGS, MESSAGE_TRANSMITTER_V2_ADDRESS,
-  TIME_LOCK_HOOK_ADDRESSES, TIME_LOCK_HOOK_ABI,
-  encodeTimeLockHookData, computeTimeLockReleaseId, ARC_CCTP_DOMAIN,
+  TIME_LOCK_HOOK_ADDRESSES, TIME_LOCK_HOOK_ABI, RELEASE_SCHEDULED_EVENT_ABI,
+  encodeTimeLockHookData,
   parseToken, ARC_TESTNET,
 } from "../lib/contracts";
 import type { Address } from "viem";
 
 interface TimeLockMeta {
   type: "time_lock";
-  releaseId: `0x${string}`;
+  releaseId?: `0x${string}`;   // set after relay() — read from ReleaseScheduled event
   unlockTimestamp: number;
   finalRecipient: string;
   hookAddress?: string;
@@ -91,6 +91,11 @@ function ReceiveDialog({
   const [claimingTimeLock, setClaimingTimeLock] = useState(false);
   const [timeLockClaimTx, setTimeLockClaimTx]   = useState<string | null>(null);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  // releaseId emitted by TimeLockHook.relay() — nonce-based, not pre-computable.
+  // Persisted in localStorage so it survives dialog close/reopen.
+  const [actualReleaseId, setActualReleaseId] = useState<`0x${string}` | null>(() =>
+    localStorage.getItem(`timeLock_releaseId_${transferId}`) as `0x${string}` | null
+  );
 
   const queryClient = useQueryClient();
   const updateStatus = useUpdateCrosschainTransferStatus({
@@ -218,20 +223,59 @@ function ReceiveDialog({
         ? { maxFeePerGas: feeData.maxFeePerGas * 2n, maxPriorityFeePerGas: (feeData.maxPriorityFeePerGas ?? 1_000_000n) }
         : {};
 
-      const hash = await wc.writeContract({
-        address: MESSAGE_TRANSMITTER_V2_ADDRESS,
-        abi: RECEIVE_MESSAGE_ABI,
-        functionName: "receiveMessage",
-        args: [attest.messageBytes as `0x${string}`, attest.attestation as `0x${string}`],
-        account,
-        chain: destViemChain as any,
-        ...gasBump,
-      });
-      await pc.waitForTransactionReceipt({ hash });
-      setClaimTx(hash);
-      updateStatus.mutate({ id: transferId, data: { status: "complete", mintTxHash: hash, caller: walletAddress } as any });
+      // Time-lock transfers relay through TimeLockHook.relay() instead of
+      // MessageTransmitterV2.receiveMessage() directly. This mints USDC to
+      // TimeLockHook atomically and registers the pending release.
+      if (isTimeLock && timeLockMeta) {
+        const hookAddress = (timeLockMeta.hookAddress as `0x${string}` | undefined) ?? TIME_LOCK_HOOK_ADDRESSES[destChain];
+        if (!hookAddress) {
+          setErr(`TimeLockHook not deployed on ${destChain} — update TIME_LOCK_HOOK_ADDRESSES in contracts.ts`);
+          return;
+        }
+        const hash = await wc.writeContract({
+          address: hookAddress,
+          abi: TIME_LOCK_HOOK_ABI,
+          functionName: "relay",
+          args: [
+            attest.messageBytes as `0x${string}`,
+            attest.attestation as `0x${string}`,
+            timeLockMeta.finalRecipient as Address,
+            BigInt(timeLockMeta.unlockTimestamp),
+          ],
+          account,
+          chain: destViemChain as any,
+          ...gasBump,
+        });
+        const receipt = await pc.waitForTransactionReceipt({ hash });
+
+        // Parse the ReleaseScheduled event to capture the on-chain releaseId.
+        // releaseId is nonce-based (not pre-computable), so we read it from the event.
+        const events = parseEventLogs({ abi: RELEASE_SCHEDULED_EVENT_ABI, logs: receipt.logs });
+        if (events[0]) {
+          const rid = events[0].args.releaseId as `0x${string}`;
+          setActualReleaseId(rid);
+          localStorage.setItem(`timeLock_releaseId_${transferId}`, rid);
+        }
+
+        setClaimTx(hash);
+        updateStatus.mutate({ id: transferId, data: { status: "complete", mintTxHash: hash, caller: walletAddress } as any });
+      } else {
+        // Standard CCTP relay — USDC minted directly to recipient.
+        const hash = await wc.writeContract({
+          address: MESSAGE_TRANSMITTER_V2_ADDRESS,
+          abi: RECEIVE_MESSAGE_ABI,
+          functionName: "receiveMessage",
+          args: [attest.messageBytes as `0x${string}`, attest.attestation as `0x${string}`],
+          account,
+          chain: destViemChain as any,
+          ...gasBump,
+        });
+        await pc.waitForTransactionReceipt({ hash });
+        setClaimTx(hash);
+        updateStatus.mutate({ id: transferId, data: { status: "complete", mintTxHash: hash, caller: walletAddress } as any });
+      }
     } catch (e: any) {
-      setErr(e.shortMessage ?? e.message ?? "Claim failed");
+      setErr(e.shortMessage ?? e.message ?? "Relay failed");
     } finally {
       setClaiming(false);
     }
@@ -240,9 +284,16 @@ function ReceiveDialog({
   const handleTimeLockClaim = async () => {
     if (!timeLockMeta) return;
     if (!destConfig) { setErr("Destination chain config not found"); return; }
-    // Prefer the address recorded at burn time (guards against redeployment breaking in-flight transfers)
     const hookAddress = (timeLockMeta.hookAddress as `0x${string}` | undefined) ?? TIME_LOCK_HOOK_ADDRESSES[destChain];
     if (!hookAddress) { setErr(`TimeLockHook not deployed on ${destChain} — deploy contracts/src/TimeLockHook.sol first`); return; }
+
+    // releaseId is emitted during relay() from the ReleaseScheduled event (nonce-based, not pre-computable).
+    // It's stored in state after relay and persisted in localStorage so it survives page reloads.
+    const rid = actualReleaseId ?? (localStorage.getItem(`timeLock_releaseId_${transferId}`) as `0x${string}` | null);
+    if (!rid) {
+      setErr("Release ID not found. Complete the relay step (\"Relay & lock in TimeLockHook\") first — the releaseId is captured from the ReleaseScheduled event.");
+      return;
+    }
 
     const eth = (window as any).ethereum;
     if (!eth) { setErr("MetaMask required to claim"); return; }
@@ -273,30 +324,15 @@ function ReceiveDialog({
       const wc = createWalletClient({ chain: destViemChain as any, transport: custom(eth) });
       const pc = createPublicClient({ chain: destViemChain as any, transport: http(destConfig.rpc) });
 
-      // Always recompute releaseId from raw components — the stored value may be stale
-      // (e.g. computed with old padHex direction before the dir:'left' fix).
-      // This ensures correctness for both old and new transfers.
-      const amount = BigInt(transferAmount ?? "0");
-      const freshReleaseId = computeTimeLockReleaseId(
-        ARC_CCTP_DOMAIN,
-        CONTRACT_ADDRESSES.CROSSCHAIN_ESCROW,
-        timeLockMeta.finalRecipient as Address,
-        amount,
-        BigInt(timeLockMeta.unlockTimestamp),
-      );
-
-      // Preflight: check the release exists before prompting MetaMask
+      // Preflight: verify the release exists on-chain before prompting MetaMask
       const releaseInfo = await pc.readContract({
         address: hookAddress,
         abi: TIME_LOCK_HOOK_ABI,
         functionName: "getRelease",
-        args: [freshReleaseId],
+        args: [rid],
       }) as unknown as [string, bigint, bigint, boolean, boolean];
       if (!releaseInfo[0] || releaseInfo[0] === "0x0000000000000000000000000000000000000000") {
-        setErr(
-          "Release not found on-chain. The relay step (\"Mint to TimeLockHook\") must be completed before claiming. " +
-          "Open the dialog and click the relay button to submit the Circle attestation first."
-        );
+        setErr("Release not found on-chain. Complete the relay step first.");
         return;
       }
       if (releaseInfo[3]) {
@@ -308,7 +344,7 @@ function ReceiveDialog({
         address: hookAddress,
         abi: TIME_LOCK_HOOK_ABI,
         functionName: "claim",
-        args: [freshReleaseId],
+        args: [rid],
         account,
         chain: destViemChain as any,
       });
@@ -335,12 +371,27 @@ function ReceiveDialog({
     return `${Math.ceil(secs / 86400)}d`;
   }
 
+  const timeLockHookAddress = isTimeLock
+    ? ((timeLockMeta?.hookAddress as `0x${string}` | undefined) ?? TIME_LOCK_HOOK_ADDRESSES[destChain])
+    : null;
+
   const calldata = isReady
-    ? encodeFunctionData({
-        abi: RECEIVE_MESSAGE_ABI,
-        functionName: "receiveMessage",
-        args: [attest!.messageBytes as `0x${string}`, attest!.attestation as `0x${string}`],
-      })
+    ? isTimeLock && timeLockMeta && timeLockHookAddress
+      ? encodeFunctionData({
+          abi: TIME_LOCK_HOOK_ABI,
+          functionName: "relay",
+          args: [
+            attest!.messageBytes as `0x${string}`,
+            attest!.attestation as `0x${string}`,
+            timeLockMeta.finalRecipient as Address,
+            BigInt(timeLockMeta.unlockTimestamp),
+          ],
+        })
+      : encodeFunctionData({
+          abi: RECEIVE_MESSAGE_ABI,
+          functionName: "receiveMessage",
+          args: [attest!.messageBytes as `0x${string}`, attest!.attestation as `0x${string}`],
+        })
     : null;
 
   return (
@@ -404,7 +455,9 @@ function ReceiveDialog({
               </div>
               <details>
                 <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Release ID</summary>
-                <div className="font-mono mt-1 break-all text-muted-foreground">{timeLockMeta.releaseId}</div>
+                <div className="font-mono mt-1 break-all text-muted-foreground">
+                  {actualReleaseId ?? (localStorage.getItem(`timeLock_releaseId_${transferId}`) ?? "pending — available after relay")}
+                </div>
               </details>
             </div>
           )}
@@ -510,8 +563,18 @@ function ReceiveDialog({
               )}
 
               <div className="rounded-md bg-muted/50 border border-border p-3 text-xs space-y-1 text-muted-foreground">
-                <p>MetaMask switches to <strong>{destChain}</strong> and calls <code className="text-foreground">receiveMessage</code> on the Circle MessageTransmitter.</p>
-                <p>You receive the <strong>full amount</strong> — no relay fee. Gas costs ~0.001–0.003 {destConfig?.nativeCurrency.symbol ?? "ETH"} on {destChain}.</p>
+                {isTimeLock ? (
+                  <>
+                    <p>MetaMask switches to <strong>{destChain}</strong> and calls <code className="text-foreground">TimeLockHook.relay()</code>.</p>
+                    <p>This relays the CCTP message (minting USDC directly to TimeLockHook) and registers the time-locked release atomically.</p>
+                    <p>The <strong>releaseId</strong> is captured from the <code className="text-foreground">ReleaseScheduled</code> event so you can claim after unlock.</p>
+                  </>
+                ) : (
+                  <>
+                    <p>MetaMask switches to <strong>{destChain}</strong> and calls <code className="text-foreground">receiveMessage</code> on the Circle MessageTransmitter.</p>
+                    <p>You receive the <strong>full amount</strong> — no relay fee. Gas costs ~0.001–0.003 {destConfig?.nativeCurrency.symbol ?? "ETH"} on {destChain}.</p>
+                  </>
+                )}
               </div>
               <Button
                 className="w-full"
@@ -524,6 +587,8 @@ function ReceiveDialog({
                   ? "Waiting for attestation…"
                   : destBalance !== null && destBalance < GAS_THRESHOLD_WEI
                   ? `Insufficient ${destConfig?.nativeCurrency.symbol ?? "ETH"} for gas — top up first`
+                  : isTimeLock
+                  ? `Relay & lock in TimeLockHook on ${destChain}`
                   : `Claim USDC on ${destChain} via MetaMask`}
               </Button>
             </div>
@@ -565,7 +630,7 @@ function ReceiveDialog({
                 {calldata && (
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-muted-foreground">receiveMessage calldata</span>
+                      <span className="text-muted-foreground">{isTimeLock ? "TimeLockHook.relay() calldata" : "receiveMessage calldata"}</span>
                       <Button variant="ghost" size="sm" className="h-5 text-xs" onClick={() => copyText(calldata)}>
                         Copy
                       </Button>
@@ -583,7 +648,13 @@ function ReceiveDialog({
             <a href={`https://testnet.arcscan.app/tx/${txHash}`} target="_blank" rel="noreferrer" className="text-primary hover:underline">
               Burn tx on ArcScan ↗
             </a>
-            {attest?.receiveTarget && (
+            {attest?.receiveTarget && isTimeLock && timeLockHookAddress && (
+              <a href={`${attest.receiveTarget.explorerBase}/${timeLockHookAddress}#writeContract`}
+                target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                TimeLockHook on {destChain} ↗
+              </a>
+            )}
+            {attest?.receiveTarget && !isTimeLock && (
               <a href={`${attest.receiveTarget.explorerBase}/0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275#writeContract`}
                 target="_blank" rel="noreferrer" className="text-primary hover:underline">
                 MessageTransmitterV2 on {destChain} ↗
@@ -756,16 +827,10 @@ export default function Crosschain() {
         contractRecipient = hookAddr;
         encodedHookData   = encodeTimeLockHookData(formData.recipient as Address, unlockTimestamp, rawAmount);
 
-        const releaseId = computeTimeLockReleaseId(
-          ARC_CCTP_DOMAIN,
-          CONTRACT_ADDRESSES.CROSSCHAIN_ESCROW,
-          formData.recipient as Address,
-          rawAmount,
-          unlockTimestamp,
-        );
+        // releaseId is determined on-chain by TimeLockHook.relay() (nonce-based).
+        // It is NOT pre-computable — read from the ReleaseScheduled event after relay.
         timeLockMetaJson = JSON.stringify({
           type:            "time_lock",
-          releaseId,
           unlockTimestamp: Number(unlockTimestamp),
           finalRecipient:  formData.recipient,
           hookAddress:     hookAddr,

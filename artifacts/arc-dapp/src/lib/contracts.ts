@@ -1,4 +1,4 @@
-import { encodeAbiParameters, keccak256, padHex, parseUnits, formatUnits, type Address } from "viem";
+import { encodeAbiParameters, parseUnits, formatUnits, type Address } from "viem";
 
 export const ARC_TESTNET = {
   id: 5042002,
@@ -105,6 +105,16 @@ export const CROSSCHAIN_ESCROW_ABI = [
  */
 export const TIME_LOCK_HOOK_ABI = [
   {
+    name: "relay", type: "function", stateMutability: "nonpayable",
+    inputs: [
+      { name: "message",         type: "bytes"    },
+      { name: "attestation",     type: "bytes"    },
+      { name: "finalRecipient",  type: "address"  },
+      { name: "unlockTimestamp", type: "uint256"  },
+    ],
+    outputs: [{ name: "releaseId", type: "bytes32" }],
+  },
+  {
     name: "claim", type: "function", stateMutability: "nonpayable",
     inputs: [{ name: "releaseId", type: "bytes32" }],
     outputs: [],
@@ -120,25 +130,22 @@ export const TIME_LOCK_HOOK_ABI = [
       { name: "claimable",  type: "bool"    },
     ],
   },
+] as const;
+
+/**
+ * ABI fragment for the ReleaseScheduled event emitted by TimeLockHook.relay().
+ * Use with viem parseEventLogs() to extract the releaseId after relay.
+ */
+export const RELEASE_SCHEDULED_EVENT_ABI = [
   {
-    name: "computeReleaseId", type: "function", stateMutability: "pure",
+    type: "event",
+    name: "ReleaseScheduled",
     inputs: [
-      { name: "sourceDomain",    type: "uint32"  },
-      { name: "messageSender",   type: "bytes32" },
-      { name: "finalRecipient",  type: "address" },
-      { name: "amount",          type: "uint256" },
-      { name: "unlockTimestamp", type: "uint256" },
+      { name: "releaseId",  type: "bytes32", indexed: true  },
+      { name: "recipient",  type: "address", indexed: true  },
+      { name: "amount",     type: "uint256", indexed: false },
+      { name: "unlockTime", type: "uint256", indexed: false },
     ],
-    outputs: [{ type: "bytes32" }],
-  },
-  {
-    name: "handleReceiveMessage", type: "function", stateMutability: "nonpayable",
-    inputs: [
-      { name: "sourceDomain", type: "uint32"  },
-      { name: "sender",       type: "bytes32" },
-      { name: "messageBody",  type: "bytes"   },
-    ],
-    outputs: [{ type: "bool" }],
   },
 ] as const;
 
@@ -152,9 +159,9 @@ export const TIME_LOCK_HOOK_ABI = [
  * Then fill in the address below for each chain.
  */
 export const TIME_LOCK_HOOK_ADDRESSES: Record<string, `0x${string}` | null> = {
-  "Ethereum Sepolia": "0x003f131f247EA8f8894B2edc8E41136be6F1EC94",
+  "Ethereum Sepolia": "0x68c49409e3f5fC1e8CC745bE7082692f773945F6", // v6 deployed
   "Base Sepolia":     null, // deployer wallet needs Base Sepolia ETH — see replit.md
-  "Arbitrum Sepolia": "0xA5483717601038FC841b63a6e419897Fc58E7f84",
+  "Arbitrum Sepolia": "0x0650beEB6Dd48beA2540ae942Ef3318086644c27", // v6 deployed
 };
 
 /**
@@ -188,9 +195,11 @@ export const MESSAGE_TRANSMITTER_V2_ADDRESS = "0xE737e5cEBEEBa77EFE34D4aa0907565
  * Encode hookData for a time-lock CCTP v2 transfer.
  * This is passed to CrosschainEscrow.initiateConditionalTransfer() as the `hookData` arg.
  *
- * Circle passes this verbatim as `messageBody` to TimeLockHook.handleReceiveMessage().
+ * In v6, TimeLockHook.relay() is called directly by the user (not by Circle's hook mechanism),
+ * so hookData encoded here is embedded in the CCTP message for auditability only — not parsed
+ * on-chain. The relay() params (finalRecipient, unlockTimestamp) are passed separately.
+ *
  * Layout (96 bytes): abi.encode(address finalRecipient, uint256 unlockTimestamp, uint256 amount)
- * Amount is included so the hook knows how much USDC to release on claim.
  */
 export function encodeTimeLockHookData(
   finalRecipient: Address,
@@ -203,41 +212,6 @@ export function encodeTimeLockHookData(
   );
 }
 
-/**
- * Pre-compute the releaseId that TimeLockHook will emit in ReleaseScheduled.
- * Matches the on-chain logic in TimeLockHook._computeReleaseId().
- *
- * Call this before broadcasting the burn tx so you can store it with the transfer record.
- *
- * @param sourceDomain       CCTP domain of Arc Testnet (ARC_CCTP_DOMAIN = 26)
- * @param crosschainEscrow   CrosschainEscrow address on Arc (becomes the CCTP messageSender)
- * @param finalRecipient     Address encoded in hookData — who receives USDC after unlock
- * @param amount             Raw USDC amount (6 decimals, same as passed to burn)
- * @param unlockTimestamp    Unix seconds, same value encoded in hookData
- */
-export function computeTimeLockReleaseId(
-  sourceDomain: number,
-  crosschainEscrow: `0x${string}`,
-  finalRecipient: Address,
-  amount: bigint,
-  unlockTimestamp: bigint,
-): `0x${string}` {
-  // CCTP encodes addresses as LEFT-padded bytes32 (messageSender field in BurnMessageV2).
-  // padHex defaults to dir:'right' — must explicitly specify dir:'left' to match EVM encoding.
-  const messageSenderBytes32 = padHex(crosschainEscrow, { size: 32, dir: 'left' });
-  return keccak256(
-    encodeAbiParameters(
-      [
-        { type: "uint32"  },
-        { type: "bytes32" },
-        { type: "address" },
-        { type: "uint256" },
-        { type: "uint256" },
-      ],
-      [sourceDomain, messageSenderBytes32, finalRecipient, amount, unlockTimestamp],
-    ),
-  );
-}
 
 // ─── Chain configs ────────────────────────────────────────────────────────────
 

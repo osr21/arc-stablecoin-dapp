@@ -3,9 +3,13 @@ pragma solidity ^0.8.20;
 
 import "./IERC20.sol";
 
+interface IMessageTransmitterV2 {
+    function receiveMessage(bytes calldata message, bytes calldata attestation) external returns (bool);
+}
+
 /**
- * @title TimeLockHook (v5 — hookData-only design)
- * @notice CCTP v2 hook contract deployed on destination chains (e.g. Ethereum Sepolia).
+ * @title TimeLockHook (v6 — self-relay design)
+ * @notice CCTP v2 time-lock contract deployed on destination chains (e.g. Ethereum Sepolia).
  *
  * ┌─────────────────────────────────────────────────────────────────────────────┐
  * │  FLOW                                                                       │
@@ -14,48 +18,44 @@ import "./IERC20.sol";
  * │       recipient  = address(TimeLockHook)  ← this contract on dest chain    │
  * │       hookData   = abi.encode(finalRecipient, unlockTimestamp, amount)      │
  * │                                                                             │
- * │  2. Circle attests. Anyone calls:                                           │
- * │       MessageTransmitterV2.receiveMessage(messageBytes, attestation)        │
- * │     → TokenMessengerV2 mints USDC to address(TimeLockHook)                 │
- * │     → TokenMessengerV2 calls TimeLockHook.handleReceiveMessage(             │
- * │           sourceDomain,                                                     │
- * │           sender,       ← CrosschainEscrow on source chain (bytes32)       │
- * │           hookData      ← the raw hookData bytes from the burn, NOT        │
- * │                            the full BurnMessageV2 struct                    │
- * │         )                                                                   │
+ * │  2. Circle attests the burn message.                                        │
  * │                                                                             │
- * │  3. TimeLockHook decodes hookData and stores a PendingRelease.             │
+ * │  3. Anyone calls THIS contract's relay():                                   │
+ * │       TimeLockHook.relay(message, attestation, finalRecipient, unlockTs)    │
+ * │     → internally calls MessageTransmitterV2.receiveMessage()               │
+ * │     → USDC minted to address(this) [since mintRecipient = TimeLockHook]    │
+ * │     → PendingRelease stored with a unique nonce-based releaseId             │
+ * │     → ReleaseScheduled(releaseId, ...) emitted                             │
  * │                                                                             │
  * │  4. After unlockTimestamp, finalRecipient calls:                            │
  * │       TimeLockHook.claim(releaseId)                                         │
  * │     → USDC transferred to finalRecipient                                   │
  * └─────────────────────────────────────────────────────────────────────────────┘
  *
- * KEY DESIGN INSIGHT:
- *   Circle passes hookData (not the full BurnMessageV2) as the `messageBody`
- *   parameter to handleReceiveMessage. The `sender` parameter is the address
- *   that called depositForBurnWithHook on the source chain = CrosschainEscrow.
+ * KEY DESIGN INSIGHT (v6 vs previous versions):
+ *   Circle's CCTP v2 hook mechanism does NOT automatically call handleReceiveMessage
+ *   on the mintRecipient. USDC is simply ERC-20 transferred to mintRecipient, and hooks
+ *   only run if someone calls a Circle CCTPHookWrapper.relay(). We avoid that complexity
+ *   by making TimeLockHook itself the relay entrypoint: it calls receiveMessage() and
+ *   registers the pending release atomically.
  *
- * hookData encoding (96 bytes):
- *   abi.encode(address finalRecipient, uint256 unlockTimestamp, uint256 amount)
- *   Amount is included so the contract knows how much USDC to release on claim.
+ * MessageTransmitterV2 is deployed via CREATE2 at the same address on all CCTP v2 chains:
+ *   0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275
  *
- * releaseId (deterministic, pre-computable by frontend):
- *   keccak256(abi.encode(sourceDomain, sender_bytes32, finalRecipient, amount, unlockTimestamp))
- *   where sender_bytes32 = CrosschainEscrow left-padded to bytes32.
- *
- * Caller hierarchy on destination chain:
- *   MessageTransmitterV2 (0xE737...275) → TokenMessengerV2 (0x8FE6...DAA) → us
- *   msg.sender in handleReceiveMessage = TokenMessengerV2
+ * releaseId is deterministic per relay() call:
+ *   keccak256(abi.encode(block.chainid, address(this), relayNonce++))
+ *   — unique per chain, per contract, per relay invocation.
+ *   Frontend reads it from the ReleaseScheduled event emitted by relay().
  */
 contract TimeLockHook {
 
     // ─── State ────────────────────────────────────────────────────────────────
 
-    /// @notice The Circle TokenMessengerV2 on this chain — the ONLY allowed caller of
-    ///         handleReceiveMessage(). This is TokenMessengerV2, not MessageTransmitterV2.
-    address public immutable tokenMessenger;
+    /// @notice MessageTransmitterV2 on this chain — called internally by relay().
+    address public immutable messageTransmitter;
     address public immutable usdc;
+
+    uint256 private relayNonce;
 
     struct PendingRelease {
         address recipient;
@@ -72,9 +72,7 @@ contract TimeLockHook {
         bytes32 indexed releaseId,
         address indexed recipient,
         uint256         amount,
-        uint256         unlockTime,
-        uint32          sourceDomain,
-        bytes32         messageSender
+        uint256         unlockTime
     );
 
     event Released(
@@ -85,9 +83,8 @@ contract TimeLockHook {
 
     // ─── Errors ───────────────────────────────────────────────────────────────
 
-    error OnlyTokenMessenger();
-    error MessageTooShort();
-    error ReleaseAlreadyExists();
+    error RelayFailed();
+    error NoUSDCReceived();
     error ReleaseNotFound();
     error NotRecipient();
     error StillLocked(uint256 unlockTime, uint256 current);
@@ -95,64 +92,57 @@ contract TimeLockHook {
 
     // ─── Constructor ──────────────────────────────────────────────────────────
 
-    constructor(address _tokenMessenger, address _usdc) {
-        tokenMessenger = _tokenMessenger;
+    constructor(address _messageTransmitter, address _usdc) {
+        messageTransmitter = _messageTransmitter;
         usdc = _usdc;
     }
 
-    // ─── CCTP v2 Hook ─────────────────────────────────────────────────────────
+    // ─── Relay ────────────────────────────────────────────────────────────────
 
     /**
-     * @notice Called by TokenMessengerV2 after minting USDC to this contract.
+     * @notice Relay a CCTP v2 message and register a time-locked USDC release.
      *
-     * @dev msg.sender MUST be the Circle TokenMessengerV2 on this chain.
-     *      Call chain: receiveMessage() → MessageTransmitterV2 → TokenMessengerV2 → us
+     * @dev mintRecipient in the CCTP burn message MUST equal address(this).
+     *      USDC is minted directly to this contract by MessageTransmitterV2.receiveMessage().
+     *      The actual received amount (post-fee) is what gets locked, not the burn amount.
      *
-     *      IMPORTANT: `messageBody` is the raw hookData bytes passed to depositForBurnWithHook
-     *      on the source chain. It is NOT the full BurnMessageV2 struct.
-     *
-     *      `sender` is the address that called depositForBurnWithHook = CrosschainEscrow (bytes32).
-     *
-     * @param sourceDomain  Source chain CCTP domain (Arc Testnet = 26).
-     * @param sender        CrosschainEscrow address on source chain, left-padded to bytes32.
-     * @param messageBody   Raw hookData = abi.encode(finalRecipient, unlockTimestamp, amount).
+     * @param message         CCTP message bytes (from Circle IRIS attestation API).
+     * @param attestation     Attestation bytes (from Circle IRIS attestation API).
+     * @param finalRecipient  Address that can claim USDC after unlockTimestamp.
+     * @param unlockTimestamp Unix timestamp after which claim() is permitted.
+     * @return releaseId      Unique ID — pass this to claim(). Also emitted in ReleaseScheduled.
      */
-    function handleReceiveMessage(
-        uint32  sourceDomain,
-        bytes32 sender,
-        bytes calldata messageBody
-    ) external returns (bool) {
-        if (msg.sender != tokenMessenger) revert OnlyTokenMessenger();
+    function relay(
+        bytes calldata message,
+        bytes calldata attestation,
+        address finalRecipient,
+        uint256 unlockTimestamp
+    ) external returns (bytes32 releaseId) {
+        uint256 balBefore = IERC20(usdc).balanceOf(address(this));
 
-        // hookData = abi.encode(address, uint256, uint256) = 96 bytes minimum
-        if (messageBody.length < 96) revert MessageTooShort();
+        bool ok = IMessageTransmitterV2(messageTransmitter).receiveMessage(message, attestation);
+        if (!ok) revert RelayFailed();
 
-        // Decode hookData: (finalRecipient, unlockTimestamp, amount)
-        (address finalRecipient, uint256 unlockTimestamp, uint256 amount) =
-            abi.decode(messageBody, (address, uint256, uint256));
+        uint256 received = IERC20(usdc).balanceOf(address(this)) - balBefore;
+        if (received == 0) revert NoUSDCReceived();
 
-        // Deterministic release ID — matches frontend's computeTimeLockReleaseId().
-        // Uses `sender` = CrosschainEscrow bytes32 (left-padded) as passed by Circle.
-        bytes32 releaseId = _computeReleaseId(sourceDomain, sender, finalRecipient, amount, unlockTimestamp);
-
-        if (pendingReleases[releaseId].recipient != address(0)) revert ReleaseAlreadyExists();
+        releaseId = keccak256(abi.encode(block.chainid, address(this), relayNonce++));
 
         pendingReleases[releaseId] = PendingRelease({
             recipient:  finalRecipient,
-            amount:     amount,
+            amount:     received,
             unlockTime: unlockTimestamp,
             claimed:    false
         });
 
-        emit ReleaseScheduled(releaseId, finalRecipient, amount, unlockTimestamp, sourceDomain, sender);
-        return true;
+        emit ReleaseScheduled(releaseId, finalRecipient, received, unlockTimestamp);
     }
 
     // ─── Claim ────────────────────────────────────────────────────────────────
 
     /**
      * @notice Claim time-locked USDC after the unlock timestamp.
-     * @param releaseId  The release ID emitted in the ReleaseScheduled event or pre-computed.
+     * @param releaseId  The ID emitted in the ReleaseScheduled event during relay().
      */
     function claim(bytes32 releaseId) external {
         PendingRelease storage r = pendingReleases[releaseId];
@@ -185,35 +175,5 @@ contract TimeLockHook {
             r.claimed,
             !r.claimed && block.timestamp >= r.unlockTime && r.recipient != address(0)
         );
-    }
-
-    /**
-     * @notice Pre-compute the releaseId for a pending transfer (matches handleReceiveMessage).
-     * @param sourceDomain     CCTP domain of source chain (Arc = 26).
-     * @param messageSender    CrosschainEscrow address on source chain, left-padded to bytes32.
-     * @param finalRecipient   Address that will receive USDC after unlock.
-     * @param amount           USDC amount (6 decimals), same value encoded in hookData.
-     * @param unlockTimestamp  Unix timestamp after which claim() is allowed.
-     */
-    function computeReleaseId(
-        uint32  sourceDomain,
-        bytes32 messageSender,
-        address finalRecipient,
-        uint256 amount,
-        uint256 unlockTimestamp
-    ) external pure returns (bytes32) {
-        return _computeReleaseId(sourceDomain, messageSender, finalRecipient, amount, unlockTimestamp);
-    }
-
-    // ─── Internal ─────────────────────────────────────────────────────────────
-
-    function _computeReleaseId(
-        uint32  sourceDomain,
-        bytes32 messageSender,
-        address finalRecipient,
-        uint256 amount,
-        uint256 unlockTimestamp
-    ) internal pure returns (bytes32) {
-        return keccak256(abi.encode(sourceDomain, messageSender, finalRecipient, amount, unlockTimestamp));
     }
 }
