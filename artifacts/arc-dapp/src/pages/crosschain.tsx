@@ -71,13 +71,14 @@ function formatEth(wei: bigint): string {
 }
 
 function ReceiveDialog({
-  txHash, destChain, transferId, walletAddress, timeLockMeta,
+  txHash, destChain, transferId, walletAddress, timeLockMeta, transferAmount,
 }: {
   txHash: string;
   destChain: string;
   transferId: number;
   walletAddress: string | undefined;
   timeLockMeta?: TimeLockMeta;
+  transferAmount?: string;
 }) {
   const [open, setOpen]         = useState(false);
   const [attest, setAttest]     = useState<AttestationResult | null>(null);
@@ -272,11 +273,42 @@ function ReceiveDialog({
       const wc = createWalletClient({ chain: destViemChain as any, transport: custom(eth) });
       const pc = createPublicClient({ chain: destViemChain as any, transport: http(destConfig.rpc) });
 
+      // Always recompute releaseId from raw components — the stored value may be stale
+      // (e.g. computed with old padHex direction before the dir:'left' fix).
+      // This ensures correctness for both old and new transfers.
+      const amount = BigInt(transferAmount ?? "0");
+      const freshReleaseId = computeTimeLockReleaseId(
+        ARC_CCTP_DOMAIN,
+        CONTRACT_ADDRESSES.CROSSCHAIN_ESCROW,
+        timeLockMeta.finalRecipient as Address,
+        amount,
+        BigInt(timeLockMeta.unlockTimestamp),
+      );
+
+      // Preflight: check the release exists before prompting MetaMask
+      const releaseInfo = await pc.readContract({
+        address: hookAddress,
+        abi: TIME_LOCK_HOOK_ABI,
+        functionName: "getRelease",
+        args: [freshReleaseId],
+      }) as unknown as [string, bigint, bigint, boolean, boolean];
+      if (!releaseInfo[0] || releaseInfo[0] === "0x0000000000000000000000000000000000000000") {
+        setErr(
+          "Release not found on-chain. The relay step (\"Mint to TimeLockHook\") must be completed before claiming. " +
+          "Open the dialog and click the relay button to submit the Circle attestation first."
+        );
+        return;
+      }
+      if (releaseInfo[3]) {
+        setErr("This release has already been claimed.");
+        return;
+      }
+
       const hash = await wc.writeContract({
         address: hookAddress,
         abi: TIME_LOCK_HOOK_ABI,
         functionName: "claim",
-        args: [timeLockMeta.releaseId],
+        args: [freshReleaseId],
         account,
         chain: destViemChain as any,
       });
@@ -1064,6 +1096,7 @@ export default function Crosschain() {
                       transferId={tx.id}
                       walletAddress={address ?? undefined}
                       timeLockMeta={timeLockMeta}
+                      transferAmount={tx.amount}
                     />
                   </TableCell>
                 </TableRow>
