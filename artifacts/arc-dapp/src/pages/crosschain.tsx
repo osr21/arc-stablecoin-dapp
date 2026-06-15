@@ -429,6 +429,12 @@ export default function Crosschain() {
   const [txPending, setTxPending]     = useState(false);
   const [usdcBalance, setUsdcBalance] = useState<bigint | null>(null);
   const [conditionType, setConditionType] = useState("unconditional");
+  const [conditionParams, setConditionParams] = useState({
+    unlockTime:      "",
+    oracleCondition: "",
+    multisigM:       "2",
+    multisigN:       "3",
+  });
 
   const selectedCondition = CONDITION_TYPES.find(c => c.value === conditionType) ?? CONDITION_TYPES[0];
 
@@ -450,12 +456,29 @@ export default function Crosschain() {
     }).then((bal: unknown) => setUsdcBalance(bal as bigint)).catch(() => {});
   }, [createOpen, address, publicClient]);
 
-  // Sync condition type selection → auto-fill description (unless user typed a custom one)
+  // Derive description from condition type + params (skip for "custom" — user controls it directly)
   useEffect(() => {
-    if (conditionType !== "custom") {
-      setFormData(prev => ({ ...prev, conditionDescription: selectedCondition.description }));
+    if (conditionType === "custom") return;
+    let desc = "";
+    if (conditionType === "unconditional") {
+      desc = "Unconditional CCTP transfer";
+    } else if (conditionType === "time_lock") {
+      if (conditionParams.unlockTime) {
+        const dt = new Date(conditionParams.unlockTime);
+        desc = `Funds released after ${dt.toISOString().replace("T", " ").slice(0, 16)} UTC`;
+      } else {
+        desc = "Funds released after time-lock condition is met";
+      }
+    } else if (conditionType === "oracle") {
+      const cond = conditionParams.oracleCondition.trim();
+      desc = cond
+        ? `Funds released upon oracle confirmation of: ${cond}`
+        : "Funds released upon external oracle confirmation";
+    } else if (conditionType === "multisig") {
+      desc = `Funds released upon ${conditionParams.multisigM}-of-${conditionParams.multisigN} multisig approval`;
     }
-  }, [conditionType, selectedCondition.description]);
+    setFormData(prev => ({ ...prev, conditionDescription: desc }));
+  }, [conditionType, conditionParams]);
 
   const parsedAmount  = parseFloat(formData.amount) || 0;
   const hasAmount     = parsedAmount > 0;
@@ -627,7 +650,62 @@ export default function Crosschain() {
                   <p className="text-xs text-muted-foreground">{selectedCondition.hint}</p>
                 </div>
 
-                {/* Condition description — editable, auto-filled by type */}
+                {/* Condition-type-specific parameters */}
+                {conditionType === "time_lock" && (
+                  <div className="space-y-2">
+                    <Label>Unlock Date &amp; Time <span className="text-muted-foreground font-normal">(UTC)</span></Label>
+                    <Input
+                      type="datetime-local"
+                      value={conditionParams.unlockTime}
+                      min={new Date().toISOString().slice(0, 16)}
+                      onChange={e => setConditionParams(prev => ({ ...prev, unlockTime: e.target.value }))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Sets the on-chain condition string — you must deploy a time-lock hook contract on {formData.destChain} to enforce it.
+                    </p>
+                  </div>
+                )}
+
+                {conditionType === "oracle" && (
+                  <div className="space-y-2">
+                    <Label>Oracle Condition</Label>
+                    <Input
+                      value={conditionParams.oracleCondition}
+                      onChange={e => setConditionParams(prev => ({ ...prev, oracleCondition: e.target.value }))}
+                      placeholder="e.g. ETH/USD > $4000"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Free-form condition text stored in the CCTP event. An oracle contract on {formData.destChain} must verify this before releasing funds.
+                    </p>
+                  </div>
+                )}
+
+                {conditionType === "multisig" && (
+                  <div className="space-y-2">
+                    <Label>Multisig Threshold</Label>
+                    <div className="flex items-center gap-3">
+                      <Input
+                        type="number" min="1"
+                        value={conditionParams.multisigM}
+                        onChange={e => setConditionParams(prev => ({ ...prev, multisigM: e.target.value }))}
+                        className="w-20 text-center"
+                      />
+                      <span className="text-sm text-muted-foreground shrink-0">of</span>
+                      <Input
+                        type="number" min="1" max="20"
+                        value={conditionParams.multisigN}
+                        onChange={e => setConditionParams(prev => ({ ...prev, multisigN: e.target.value }))}
+                        className="w-20 text-center"
+                      />
+                      <span className="text-sm text-muted-foreground shrink-0">signers required</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      A Gnosis Safe or equivalent multisig on {formData.destChain} must approve before USDC is released.
+                    </p>
+                  </div>
+                )}
+
+                {/* Condition description — auto-generated; editable, switches type to "custom" */}
                 <div className="space-y-2">
                   <Label>Condition Description <span className="text-muted-foreground font-normal">(stored on-chain)</span></Label>
                   <Input
@@ -638,6 +716,9 @@ export default function Crosschain() {
                     }}
                     placeholder="Describe the release condition…"
                   />
+                  {conditionType !== "custom" && (
+                    <p className="text-xs text-muted-foreground">Auto-generated from the fields above. Edit to switch to custom.</p>
+                  )}
                 </div>
 
                 {/* Transfer preview */}
