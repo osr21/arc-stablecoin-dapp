@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, escrowsTable, vestingSchedulesTable, crosschainTransfersTable, activityLogTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import { GetDashboardActivityQueryParams } from "@workspace/api-zod";
 
 const router = Router();
@@ -10,62 +10,60 @@ function safeBigInt(val: string): bigint {
 }
 
 router.get("/stats", async (_req, res) => {
-  const [escrows, vestingSchedules, crosschainTransfers] = await Promise.all([
-    db.select().from(escrowsTable),
-    db.select().from(vestingSchedulesTable),
-    db.select().from(crosschainTransfersTable),
-  ]);
+  // Use SQL aggregation to avoid loading entire tables into memory (DoS prevention).
+  const [escrowStats] = await db
+    .select({
+      total:    sql<number>`count(*)::int`,
+      active:   sql<number>`count(*) filter (where status = 'active')::int`,
+      disputed: sql<number>`count(*) filter (where status = 'disputed')::int`,
+      released: sql<number>`count(*) filter (where status in ('released','resolved'))::int`,
+      usdcLocked: sql<string>`coalesce(sum(case when token='USDC' and status in ('active','disputed') then amount::numeric else 0 end),0)::text`,
+      eurcLocked: sql<string>`coalesce(sum(case when token='EURC' and status in ('active','disputed') then amount::numeric else 0 end),0)::text`,
+    })
+    .from(escrowsTable);
 
-  const activeEscrows = escrows.filter((e) => e.status === "active").length;
-  const disputedEscrows = escrows.filter((e) => e.status === "disputed").length;
-  const releasedEscrows = escrows.filter((e) => e.status === "released" || e.status === "resolved").length;
+  const [vestingStats] = await db
+    .select({
+      total:      sql<number>`count(*)::int`,
+      usdcLocked: sql<string>`coalesce(sum(case when token='USDC' then greatest(0,(total_amount::numeric - amount_claimed::numeric)) else 0 end),0)::text`,
+      eurcLocked: sql<string>`coalesce(sum(case when token='EURC' then greatest(0,(total_amount::numeric - amount_claimed::numeric)) else 0 end),0)::text`,
+    })
+    .from(vestingSchedulesTable);
 
-  const usdcEscrows = escrows.filter((e) => e.token === "USDC" && (e.status === "active" || e.status === "disputed"));
-  const eurcEscrows = escrows.filter((e) => e.token === "EURC" && (e.status === "active" || e.status === "disputed"));
+  const [crosschainStats] = await db
+    .select({
+      total:   sql<number>`count(*)::int`,
+      volume:  sql<string>`coalesce(sum(case when status='complete' then amount::numeric else 0 end),0)::text`,
+    })
+    .from(crosschainTransfersTable);
 
-  const usdcVesting = vestingSchedules.filter((v) => v.token === "USDC");
-  const eurcVesting = vestingSchedules.filter((v) => v.token === "EURC");
+  // Combine USDC/EURC locked across escrows + vesting using BigInt to avoid float imprecision.
+  const totalUsdcLocked = (
+    safeBigInt(escrowStats?.usdcLocked ?? "0") +
+    safeBigInt(vestingStats?.usdcLocked ?? "0")
+  ).toString();
 
-  const totalUsdcLocked = [
-    ...usdcEscrows.map((e) => safeBigInt(e.amount)),
-    ...usdcVesting.map((v) => {
-      const total = safeBigInt(v.totalAmount);
-      const claimed = safeBigInt(v.amountClaimed);
-      return total > claimed ? total - claimed : BigInt(0);
-    }),
-  ].reduce((a, b) => a + b, BigInt(0)).toString();
-
-  const totalEurcLocked = [
-    ...eurcEscrows.map((e) => safeBigInt(e.amount)),
-    ...eurcVesting.map((v) => {
-      const total = safeBigInt(v.totalAmount);
-      const claimed = safeBigInt(v.amountClaimed);
-      return total > claimed ? total - claimed : BigInt(0);
-    }),
-  ].reduce((a, b) => a + b, BigInt(0)).toString();
-
-  const completedTransfers = crosschainTransfers.filter((t) => t.status === "complete");
-  const completedCrosschainVolume = completedTransfers
-    .map((t) => safeBigInt(t.amount))
-    .reduce((a, b) => a + b, BigInt(0))
-    .toString();
+  const totalEurcLocked = (
+    safeBigInt(escrowStats?.eurcLocked ?? "0") +
+    safeBigInt(vestingStats?.eurcLocked ?? "0")
+  ).toString();
 
   return res.json({
-    totalEscrows: escrows.length,
-    activeEscrows,
-    disputedEscrows,
-    releasedEscrows,
-    totalVestingSchedules: vestingSchedules.length,
-    totalCrosschainTransfers: crosschainTransfers.length,
+    totalEscrows:              escrowStats?.total ?? 0,
+    activeEscrows:             escrowStats?.active ?? 0,
+    disputedEscrows:           escrowStats?.disputed ?? 0,
+    releasedEscrows:           escrowStats?.released ?? 0,
+    totalVestingSchedules:     vestingStats?.total ?? 0,
+    totalCrosschainTransfers:  crosschainStats?.total ?? 0,
     totalUsdcLocked,
     totalEurcLocked,
-    completedCrosschainVolume,
+    completedCrosschainVolume: crosschainStats?.volume ?? "0",
   });
 });
 
 router.get("/activity", async (req, res) => {
   const query = GetDashboardActivityQueryParams.safeParse(req.query);
-  const limit = query.success ? (query.data.limit ?? 20) : 20;
+  const limit = query.success ? Math.min(query.data.limit ?? 20, 100) : 20;
 
   const rows = await db
     .select()
@@ -75,13 +73,13 @@ router.get("/activity", async (req, res) => {
 
   return res.json(
     rows.map((r) => ({
-      id: r.id,
-      type: r.type,
+      id:          r.id,
+      type:        r.type,
       description: r.description,
-      txHash: r.txHash,
-      chainId: r.chainId,
-      timestamp: r.timestamp.toISOString(),
-      metadata: r.metadata ?? null,
+      txHash:      r.txHash,
+      chainId:     r.chainId,
+      timestamp:   r.timestamp.toISOString(),
+      metadata:    r.metadata ?? null,
     }))
   );
 });

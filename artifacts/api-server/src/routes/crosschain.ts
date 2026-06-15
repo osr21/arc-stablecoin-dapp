@@ -18,7 +18,8 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 
 const router = Router();
 
-const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
+const TX_HASH_RE  = /^0x[0-9a-fA-F]{64}$/;
+const ADDRESS_RE  = /^0x[0-9a-fA-F]{40}$/i;
 
 router.get("/", async (req, res) => {
   const query = ListCrosschainTransfersQueryParams.safeParse(req.query);
@@ -65,30 +66,38 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Invalid burnTxHash format" });
   }
 
+  if (!ADDRESS_RE.test(body.data.sender)) {
+    return res.status(400).json({ error: "Invalid sender address format" });
+  }
+
+  if (!ADDRESS_RE.test(body.data.recipient)) {
+    return res.status(400).json({ error: "Invalid recipient address format" });
+  }
+
   const [transfer] = await db
     .insert(crosschainTransfersTable)
     .values({
-      sender: body.data.sender,
-      recipient: body.data.recipient,
-      sourceChain: body.data.sourceChain,
-      destChain: body.data.destChain,
-      token: body.data.token,
-      amount: body.data.amount,
-      status: "pending",
-      burnTxHash: body.data.burnTxHash,
-      messageHash: body.data.messageHash ?? null,
-      hookData: body.data.hookData ?? null,
+      sender:        body.data.sender.toLowerCase(),
+      recipient:     body.data.recipient.toLowerCase(),
+      sourceChain:   body.data.sourceChain,
+      destChain:     body.data.destChain,
+      token:         body.data.token,
+      amount:        body.data.amount,
+      status:        "pending",
+      burnTxHash:    body.data.burnTxHash,
+      messageHash:   body.data.messageHash ?? null,
+      hookData:      body.data.hookData ?? null,
       sourceChainId: body.data.sourceChainId ?? 5042002,
-      destChainId: body.data.destChainId ?? null,
-      chainId: body.data.sourceChainId ?? 5042002,
+      destChainId:   body.data.destChainId ?? null,
+      chainId:       body.data.sourceChainId ?? 5042002,
     })
     .returning();
 
   await db.insert(activityLogTable).values({
-    type: "crosschain_initiated",
+    type:        "crosschain_initiated",
     description: `Cross-chain transfer of ${transfer.amount} ${transfer.token} from ${transfer.sourceChain} to ${transfer.destChain} initiated`,
-    txHash: transfer.burnTxHash,
-    chainId: transfer.chainId,
+    txHash:      transfer.burnTxHash,
+    chainId:     transfer.chainId,
   });
 
   return res.status(201).json({
@@ -123,6 +132,12 @@ router.patch("/:id", async (req, res) => {
   const body = UpdateCrosschainTransferStatusBody.safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: "Invalid body", details: body.error.issues });
 
+  // Caller must identify as the original sender — prevents IDOR from arbitrary clients.
+  const caller = typeof req.body.caller === "string" ? req.body.caller.toLowerCase() : null;
+  if (!caller || !ADDRESS_RE.test(caller)) {
+    return res.status(400).json({ error: "Missing or invalid caller address" });
+  }
+
   const [existing] = await db
     .select()
     .from(crosschainTransfersTable)
@@ -130,11 +145,19 @@ router.patch("/:id", async (req, res) => {
 
   if (!existing) return res.status(404).json({ error: "Not found" });
 
+  if (existing.sender.toLowerCase() !== caller) {
+    return res.status(403).json({ error: "Caller is not the transfer sender" });
+  }
+
   const allowed = VALID_TRANSITIONS[existing.status] ?? [];
   if (!allowed.includes(body.data.status)) {
     return res.status(409).json({
       error: `Invalid transition: ${existing.status} → ${body.data.status}`,
     });
+  }
+
+  if (body.data.mintTxHash && !TX_HASH_RE.test(body.data.mintTxHash)) {
+    return res.status(400).json({ error: "Invalid mintTxHash format" });
   }
 
   const [updated] = await db

@@ -12,6 +12,7 @@ import {
 const router = Router();
 
 const TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/i;
 
 router.get("/", async (req, res) => {
   const query = ListVestingSchedulesQueryParams.safeParse(req.query);
@@ -58,28 +59,36 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Invalid txHash format" });
   }
 
+  if (!ADDRESS_RE.test(body.data.employer)) {
+    return res.status(400).json({ error: "Invalid employer address format" });
+  }
+
+  if (!ADDRESS_RE.test(body.data.beneficiary)) {
+    return res.status(400).json({ error: "Invalid beneficiary address format" });
+  }
+
   const [schedule] = await db
     .insert(vestingSchedulesTable)
     .values({
-      employer: body.data.employer,
-      beneficiary: body.data.beneficiary,
-      token: body.data.token,
-      totalAmount: body.data.totalAmount,
-      cliffDuration: body.data.cliffDuration,
+      employer:        body.data.employer.toLowerCase(),
+      beneficiary:     body.data.beneficiary.toLowerCase(),
+      token:           body.data.token,
+      totalAmount:     body.data.totalAmount,
+      cliffDuration:   body.data.cliffDuration,
       vestingDuration: body.data.vestingDuration,
-      startTime: body.data.startTime,
-      amountClaimed: "0",
+      startTime:       body.data.startTime,
+      amountClaimed:   "0",
       contractAddress: body.data.contractAddress,
-      txHash: body.data.txHash,
-      chainId: body.data.chainId ?? 5042002,
+      txHash:          body.data.txHash,
+      chainId:         body.data.chainId ?? 5042002,
     })
     .returning();
 
   await db.insert(activityLogTable).values({
-    type: "vesting_created",
+    type:        "vesting_created",
     description: `Vesting schedule of ${schedule.totalAmount} ${schedule.token} created for ${schedule.beneficiary.slice(0, 8)}...`,
-    txHash: schedule.txHash,
-    chainId: schedule.chainId,
+    txHash:      schedule.txHash,
+    chainId:     schedule.chainId,
   });
 
   return res.status(201).json({
@@ -109,13 +118,19 @@ router.get("/:id", async (req, res) => {
 
 router.post("/:id/claim", async (req, res) => {
   const params = ClaimVestingParams.safeParse({ id: Number(req.params.id) });
-  const body = ClaimVestingBody.safeParse(req.body);
+  const body   = ClaimVestingBody.safeParse(req.body);
   if (!params.success || !body.success) {
     return res.status(400).json({ error: "Invalid input" });
   }
 
   if (!TX_HASH_RE.test(body.data.txHash)) {
     return res.status(400).json({ error: "Invalid txHash format" });
+  }
+
+  // Caller must be the beneficiary of this schedule.
+  const caller = typeof req.body.caller === "string" ? req.body.caller.toLowerCase() : null;
+  if (!caller || !ADDRESS_RE.test(caller)) {
+    return res.status(400).json({ error: "Missing or invalid caller address" });
   }
 
   const [existing] = await db
@@ -125,10 +140,14 @@ router.post("/:id/claim", async (req, res) => {
 
   if (!existing) return res.status(404).json({ error: "Not found" });
 
+  if (caller !== existing.beneficiary.toLowerCase()) {
+    return res.status(403).json({ error: "Only the beneficiary can claim vesting tokens" });
+  }
+
   let newClaimed: bigint;
   let currentClaimed: bigint;
   try {
-    newClaimed = BigInt(body.data.amountClaimed);
+    newClaimed     = BigInt(body.data.amountClaimed);
     currentClaimed = BigInt(existing.amountClaimed);
   } catch {
     return res.status(400).json({ error: "Invalid amountClaimed: must be a numeric string" });
@@ -157,16 +176,16 @@ router.post("/:id/claim", async (req, res) => {
     .update(vestingSchedulesTable)
     .set({
       amountClaimed: body.data.amountClaimed,
-      claimTxHash: body.data.txHash,
+      claimTxHash:   body.data.txHash,
     })
     .where(eq(vestingSchedulesTable.id, params.data.id))
     .returning();
 
   await db.insert(activityLogTable).values({
-    type: "vesting_claimed",
+    type:        "vesting_claimed",
     description: `${body.data.amountClaimed} ${schedule.token} claimed from vesting schedule #${schedule.id}`,
-    txHash: body.data.txHash,
-    chainId: schedule.chainId,
+    txHash:      body.data.txHash,
+    chainId:     schedule.chainId,
   });
 
   return res.json({

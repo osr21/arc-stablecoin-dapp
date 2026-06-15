@@ -15,7 +15,7 @@ import {
   CONTRACT_ADDRESSES, CONDITIONAL_ESCROW_ABI, ERC20_ABI,
   parseToken, ARC_TESTNET,
 } from "../lib/contracts";
-import { decodeEventLog, parseAbi, type Address } from "viem";
+import { decodeEventLog, parseAbi, isAddress, type Address } from "viem";
 
 const ESCROW_EVENTS_ABI = parseAbi([
   "event EscrowCreated(uint256 indexed id, address depositor, address beneficiary, address arbiter, address token, uint256 amount, uint256 releaseTime, string conditionType)",
@@ -63,6 +63,15 @@ export default function Escrow() {
     e.preventDefault();
     if (!address || !walletClient) return;
     if (isWrongNetwork) { await switchToArc(); return; }
+
+    if (!isAddress(formData.beneficiary)) {
+      alert("Invalid beneficiary address — must be a valid 0x… Ethereum address");
+      return;
+    }
+    if (formData.arbiter && !isAddress(formData.arbiter)) {
+      alert("Invalid arbiter address — must be a valid 0x… Ethereum address");
+      return;
+    }
 
     setTxPending(true);
     try {
@@ -141,7 +150,7 @@ export default function Escrow() {
         chain: ARC_TESTNET as any,
       });
       await publicClient.waitForTransactionReceipt({ hash: tx });
-      releaseEscrow.mutate({ id, data: { txHash: tx, resolution: "beneficiary" } });
+      releaseEscrow.mutate({ id, data: { txHash: tx, resolution: "beneficiary", caller: address } as any });
     } catch (err: any) {
       alert(`Release failed: ${err.shortMessage || err.message}`);
     } finally {

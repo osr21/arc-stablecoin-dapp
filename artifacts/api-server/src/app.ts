@@ -47,7 +47,35 @@ app.use(
   }),
 );
 
-app.use(cors());
+// Restrict CORS to known origins — never allow wildcard in production.
+const ALLOWED_ORIGIN_PATTERNS: (string | RegExp)[] = [
+  "https://arc-smart-stablecoin-logic.replit.app",
+  // Replit dev-preview domains (worf cluster and generic .replit.dev)
+  /\.replit\.dev$/,
+  /\.repl\.co$/,
+  // localhost for local development
+  /^http:\/\/localhost(:\d+)?$/,
+  /^http:\/\/127\.0\.0\.1(:\d+)?$/,
+];
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      // Same-origin requests (server-to-server, curl) have no Origin header — allow.
+      if (!origin) return callback(null, true);
+      const allowed = ALLOWED_ORIGIN_PATTERNS.some((p) =>
+        typeof p === "string" ? p === origin : p.test(origin),
+      );
+      if (allowed) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS: origin '${origin}' not allowed`));
+      }
+    },
+    credentials: true,
+  }),
+);
+
 app.use(express.json({ limit: "50kb" }));
 app.use(express.urlencoded({ extended: false, limit: "10kb" }));
 

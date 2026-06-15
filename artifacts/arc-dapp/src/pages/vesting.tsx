@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { useWallet } from "../lib/wallet";
 import { formatTokenAmount, parseTokenAmount } from "../lib/format";
 import { CONTRACT_ADDRESSES, PAYROLL_VESTING_ABI, ERC20_ABI, parseToken, ARC_TESTNET } from "../lib/contracts";
-import type { Address } from "viem";
+import { isAddress, type Address } from "viem";
 
 export default function Vesting() {
   const { data: schedules, isLoading } = useListVestingSchedules();
@@ -38,6 +38,11 @@ export default function Vesting() {
     e.preventDefault();
     if (!address || !walletClient) return;
     if (isWrongNetwork) { await switchToArc(); return; }
+
+    if (!isAddress(formData.beneficiary)) {
+      alert("Invalid beneficiary address — must be a valid 0x… Ethereum address");
+      return;
+    }
 
     setTxPending(true);
     try {
@@ -110,7 +115,7 @@ export default function Vesting() {
         chain: ARC_TESTNET as any,
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash: tx });
-      claimVesting.mutate({ id: dbId, data: { txHash: tx, amountClaimed: "0" } });
+      claimVesting.mutate({ id: dbId, data: { txHash: tx, amountClaimed: "0", caller: address } as any });
     } catch (err: any) {
       alert(`Claim failed: ${err.shortMessage || err.message}`);
     } finally {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { createWalletClient, createPublicClient, custom, http, encodeFunctionData } from "viem";
+import { createWalletClient, createPublicClient, custom, http, encodeFunctionData, isAddress } from "viem";
 import { useListCrosschainTransfers, useCreateCrosschainTransfer, useUpdateCrosschainTransferStatus, getListCrosschainTransfersQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -60,7 +60,7 @@ function formatEth(wei: bigint): string {
   return (Number(wei) / 1e18).toFixed(5);
 }
 
-function ReceiveDialog({ txHash, destChain, transferId }: { txHash: string; destChain: string; transferId: number }) {
+function ReceiveDialog({ txHash, destChain, transferId, walletAddress }: { txHash: string; destChain: string; transferId: number; walletAddress: string | undefined }) {
   const [open, setOpen]         = useState(false);
   const [attest, setAttest]     = useState<AttestationResult | null>(null);
   const [polling, setPolling]   = useState(false);
@@ -133,9 +133,9 @@ function ReceiveDialog({ txHash, destChain, transferId }: { txHash: string; dest
   useEffect(() => {
     if (attest?.attestation && !markedAttesting) {
       setMarkedAttesting(true);
-      updateStatus.mutate({ id: transferId, data: { status: "attesting" } });
+      updateStatus.mutate({ id: transferId, data: { status: "attesting", caller: walletAddress } as any });
     }
-  }, [attest?.attestation, markedAttesting, transferId, updateStatus]);
+  }, [attest?.attestation, markedAttesting, transferId, updateStatus, walletAddress]);
 
   const copyText = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -200,7 +200,7 @@ function ReceiveDialog({ txHash, destChain, transferId }: { txHash: string; dest
       });
       await pc.waitForTransactionReceipt({ hash });
       setClaimTx(hash);
-      updateStatus.mutate({ id: transferId, data: { status: "complete", mintTxHash: hash } });
+      updateStatus.mutate({ id: transferId, data: { status: "complete", mintTxHash: hash, caller: walletAddress } as any });
     } catch (e: any) {
       setErr(e.shortMessage ?? e.message ?? "Claim failed");
     } finally {
@@ -506,6 +506,11 @@ export default function Crosschain() {
     if (!address || !walletClient) return;
     if (isWrongNetwork) { await switchToArc(); return; }
 
+    if (!isAddress(formData.recipient)) {
+      alert("Invalid recipient address — must be a valid 0x… Ethereum address");
+      return;
+    }
+
     setTxPending(true);
     try {
       const rawAmount  = parseToken(formData.amount);
@@ -549,7 +554,7 @@ export default function Crosschain() {
           amount:        rawAmount.toString(),
           burnTxHash:    transferTx,
           sourceChainId: ARC_TESTNET.id,
-        },
+        } as any,
       });
     } catch (err: any) {
       alert(`Transaction failed: ${err.shortMessage || err.message}`);
@@ -796,7 +801,7 @@ export default function Crosschain() {
                   </a>
                 </TableCell>
                 <TableCell>
-                  <ReceiveDialog txHash={tx.burnTxHash} destChain={tx.destChain} transferId={tx.id} />
+                  <ReceiveDialog txHash={tx.burnTxHash} destChain={tx.destChain} transferId={tx.id} walletAddress={address ?? undefined} />
                 </TableCell>
               </TableRow>
             ))}
