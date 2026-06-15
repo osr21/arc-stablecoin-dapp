@@ -10,7 +10,6 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useWallet } from "../lib/wallet";
 import { formatTokenAmount } from "../lib/format";
 import {
@@ -55,15 +54,13 @@ interface AttestationResult {
 }
 
 function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: string }) {
-  const [open, setOpen]             = useState(false);
-  const [attest, setAttest]         = useState<AttestationResult | null>(null);
-  const [polling, setPolling]       = useState(false);
-  const [relaying, setRelaying]     = useState(false);
-  const [claiming, setClaiming]     = useState(false);
-  const [relayTx, setRelayTx]       = useState<string | null>(null);
-  const [claimTx, setClaimTx]       = useState<string | null>(null);
-  const [err, setErr]               = useState<string | null>(null);
-  const [copied, setCopied]         = useState(false);
+  const [open, setOpen]       = useState(false);
+  const [attest, setAttest]   = useState<AttestationResult | null>(null);
+  const [polling, setPolling] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+  const [claimTx, setClaimTx]   = useState<string | null>(null);
+  const [err, setErr]           = useState<string | null>(null);
+  const [copied, setCopied]     = useState(false);
 
   const destConfig = DEST_CHAIN_CONFIGS[destChain];
 
@@ -92,33 +89,12 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
     setTimeout(() => setCopied(false), 1500);
   };
 
-  // Option A: Gas-free relay via arc-relay-bridge (1 USDC fee, server mints)
-  const handleGaslessRelay = async () => {
-    setErr(null);
-    setRelaying(true);
-    try {
-      const res = await fetch("/api/cctp/relay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ burnTxHash: txHash }),
-      });
-      const data = await res.json() as { txHash?: string; error?: string; explorerTx?: string };
-      if (!res.ok || !data.txHash) throw new Error(data.error ?? "Relay failed");
-      setRelayTx(data.txHash);
-    } catch (e: any) {
-      setErr(e.message);
-    } finally {
-      setRelaying(false);
-    }
-  };
-
-  // Option B: Self-relay via MetaMask (free, needs ETH on destination)
   const handleSelfClaim = async () => {
     if (!attest?.messageBytes || !attest?.attestation) return;
     if (!destConfig) { setErr("Destination chain config not found"); return; }
 
     const eth = (window as any).ethereum;
-    if (!eth) { setErr("MetaMask required"); return; }
+    if (!eth) { setErr("MetaMask required for self-relay"); return; }
 
     setErr(null);
     setClaiming(true);
@@ -170,7 +146,6 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
   };
 
   const isReady  = !!attest?.attestation;
-  const doneTx   = relayTx ?? claimTx;
   const explorer = attest?.receiveTarget?.explorerTx ?? destConfig?.explorerTx;
 
   const calldata = isReady
@@ -188,7 +163,7 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
           Receive ↗
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[580px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Receive USDC on {destChain}</DialogTitle>
         </DialogHeader>
@@ -198,8 +173,8 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
             {[
               { label: "Burn on Arc",        done: true },
-              { label: "Circle attests",      done: isReady },
-              { label: "Mint on destination", done: !!doneTx },
+              { label: "Circle attests",     done: isReady },
+              { label: "Mint on dest chain", done: !!claimTx },
             ].map((s, i) => (
               <div key={i} className={`rounded-md p-2 border ${s.done ? "border-green-500/40 bg-green-500/10 text-green-400" : "border-border bg-muted/40 text-muted-foreground"}`}>
                 <div className="font-semibold">{s.done ? "✓" : i + 1}</div>
@@ -209,18 +184,18 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
           </div>
 
           {/* Success */}
-          {doneTx && (
+          {claimTx && (
             <div className="rounded-md border border-green-500/40 bg-green-500/10 p-3 space-y-1">
               <p className="text-green-400 font-medium">✓ USDC minted on {destChain}</p>
-              <a href={`${explorer}/${doneTx}`} target="_blank" rel="noreferrer"
+              <a href={`${explorer}/${claimTx}`} target="_blank" rel="noreferrer"
                 className="text-xs font-mono text-primary hover:underline break-all">
-                {doneTx} ↗
+                {claimTx} ↗
               </a>
             </div>
           )}
 
           {/* Attestation status */}
-          {!doneTx && (
+          {!claimTx && (
             <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
               <span className="text-muted-foreground text-xs">Circle attestation</span>
               <div className="flex items-center gap-2">
@@ -234,58 +209,64 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
             </div>
           )}
 
-          {/* Receive options */}
-          {!doneTx && (
-            <Tabs defaultValue="gasless">
-              <TabsList className="w-full">
-                <TabsTrigger value="gasless" className="flex-1 text-xs">Gas-free Relay</TabsTrigger>
-                <TabsTrigger value="self" className="flex-1 text-xs">Self-relay (MetaMask)</TabsTrigger>
-              </TabsList>
-
-              {/* Tab A: Gas-free relay */}
-              <TabsContent value="gasless" className="space-y-3 pt-2">
-                <div className="rounded-md bg-muted/50 border border-border p-3 text-xs space-y-1 text-muted-foreground">
-                  <p>The arc-relay-bridge server submits the mint transaction on your behalf.</p>
-                  <p>You need <strong>no ETH</strong> on {destChain}. A relay fee of <strong>1 USDC</strong> is deducted from the received amount.</p>
-                </div>
-                <Button className="w-full" disabled={!isReady || relaying} onClick={handleGaslessRelay}>
-                  {relaying ? "Relaying…" : isReady ? `Gas-free Relay to ${destChain} (−1 USDC fee)` : "Waiting for attestation…"}
-                </Button>
-              </TabsContent>
-
-              {/* Tab B: Self relay */}
-              <TabsContent value="self" className="space-y-3 pt-2">
-                <div className="rounded-md bg-muted/50 border border-border p-3 text-xs space-y-1 text-muted-foreground">
-                  <p>You call <code>receiveMessage</code> yourself. MetaMask switches to {destChain}.</p>
-                  <p>Receive full amount with <strong>no relay fee</strong>, but you need ETH on {destChain} for gas (~0.001 ETH).</p>
-                </div>
-                <Button className="w-full" variant="secondary" disabled={!isReady || claiming || !destConfig} onClick={handleSelfClaim}>
-                  {claiming ? "Switching chain & claiming…" : isReady ? `Claim Full Amount on ${destChain}` : "Waiting for attestation…"}
-                </Button>
-              </TabsContent>
-            </Tabs>
+          {/* Self-relay */}
+          {!claimTx && (
+            <div className="space-y-3">
+              <div className="rounded-md bg-muted/50 border border-border p-3 text-xs space-y-1 text-muted-foreground">
+                <p>MetaMask switches to <strong>{destChain}</strong> and calls <code className="text-foreground">receiveMessage</code> on the Circle MessageTransmitter.</p>
+                <p>You receive the <strong>full amount</strong> with no relay fee. You need a small amount of {destConfig?.nativeCurrency.symbol ?? "ETH"} on {destChain} for gas (~0.001).</p>
+                {destConfig && (
+                  <p className="pt-1">
+                    Need testnet {destConfig.nativeCurrency.symbol}?{" "}
+                    <a href="https://faucet.circle.com" target="_blank" rel="noreferrer" className="text-primary hover:underline">Circle faucet ↗</a>
+                    {" · "}
+                    <a href="https://sepolia-faucet.pk910.de" target="_blank" rel="noreferrer" className="text-primary hover:underline">Sepolia PoW faucet ↗</a>
+                  </p>
+                )}
+              </div>
+              <Button className="w-full" disabled={!isReady || claiming || !destConfig} onClick={handleSelfClaim}>
+                {claiming
+                  ? "Switching chain & submitting…"
+                  : isReady
+                  ? `Claim USDC on ${destChain} via MetaMask`
+                  : "Waiting for attestation…"}
+              </Button>
+            </div>
           )}
 
           {err && <p className="text-xs text-destructive">{err}</p>}
 
-          {/* Message bytes + calldata (copy for advanced use) */}
+          {/* Raw data — copy for Etherscan manual submit */}
           {attest?.messageBytes && (
             <details className="text-xs">
               <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                Raw data (message bytes, calldata)
+                Raw data (manual submit via Etherscan)
               </summary>
               <div className="mt-2 space-y-2">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-muted-foreground">Message bytes</span>
+                    <span className="text-muted-foreground">message bytes</span>
                     <Button variant="ghost" size="sm" className="h-5 text-xs" onClick={() => copyText(attest.messageBytes!)}>
                       {copied ? "Copied!" : "Copy"}
                     </Button>
                   </div>
-                  <div className="font-mono bg-muted rounded p-2 break-all leading-relaxed max-h-14 overflow-y-auto text-xs">
+                  <div className="font-mono bg-muted rounded p-2 break-all max-h-14 overflow-y-auto text-xs">
                     {attest.messageBytes}
                   </div>
                 </div>
+                {attest.attestation && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-muted-foreground">attestation</span>
+                      <Button variant="ghost" size="sm" className="h-5 text-xs" onClick={() => copyText(attest.attestation!)}>
+                        Copy
+                      </Button>
+                    </div>
+                    <div className="font-mono bg-muted rounded p-2 break-all max-h-14 overflow-y-auto text-xs">
+                      {attest.attestation}
+                    </div>
+                  </div>
+                )}
                 {calldata && (
                   <div>
                     <div className="flex items-center justify-between mb-1">
@@ -294,7 +275,7 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
                         Copy
                       </Button>
                     </div>
-                    <div className="font-mono bg-muted rounded p-2 break-all leading-relaxed max-h-14 overflow-y-auto text-xs">
+                    <div className="font-mono bg-muted rounded p-2 break-all max-h-14 overflow-y-auto text-xs">
                       {calldata}
                     </div>
                   </div>
@@ -303,9 +284,9 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
             </details>
           )}
 
-          <div className="text-xs text-muted-foreground border-t border-border pt-3 flex gap-4">
+          <div className="text-xs text-muted-foreground border-t border-border pt-3 flex flex-wrap gap-4">
             <a href={`https://testnet.arcscan.app/tx/${txHash}`} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-              Burn tx ↗
+              Burn tx on ArcScan ↗
             </a>
             {attest?.receiveTarget && (
               <a href={`${attest.receiveTarget.explorerBase}/0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275#writeContract`}
