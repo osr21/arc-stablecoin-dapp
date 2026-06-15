@@ -28,6 +28,7 @@ interface ITokenMessengerV2 {
     /**
      * @notice Burn USDC and transfer to destination chain (no hook).
      *         Use for unconditional transfers where no post-mint logic is needed.
+     * @dev CCTP v2: returns nothing — nonce is emitted in the DepositForBurn event.
      */
     function depositForBurn(
         uint256 amount,
@@ -37,11 +38,12 @@ interface ITokenMessengerV2 {
         bytes32 destinationCaller,
         uint256 maxFee,
         uint32  minFinalityThreshold
-    ) external returns (uint64 nonce);
+    ) external;
 
     /**
      * @notice Burn USDC with a hook for conditional destination execution.
      *         hookData MUST be non-empty — use depositForBurn for plain transfers.
+     * @dev CCTP v2: returns nothing — nonce is emitted in the DepositForBurn event.
      */
     function depositForBurnWithHook(
         uint256 amount,
@@ -52,7 +54,7 @@ interface ITokenMessengerV2 {
         uint256 maxFee,
         uint32  minFinalityThreshold,
         bytes calldata hookData
-    ) external returns (uint64 nonce);
+    ) external;
 }
 
 contract CrosschainEscrow {
@@ -124,9 +126,9 @@ contract CrosschainEscrow {
 
         // CCTP v2: depositForBurnWithHook requires non-empty hookData.
         // Route to the plain depositForBurn for unconditional transfers.
-        uint64 nonce;
+        // Neither function returns a value in CCTP v2 — the nonce is in the DepositForBurn event.
         if (hookData.length == 0) {
-            nonce = ITokenMessengerV2(tokenMessengerV2).depositForBurn(
+            ITokenMessengerV2(tokenMessengerV2).depositForBurn(
                 amount,
                 destinationDomain,
                 mintRecipient,
@@ -136,7 +138,7 @@ contract CrosschainEscrow {
                 minFinalityThreshold
             );
         } else {
-            nonce = ITokenMessengerV2(tokenMessengerV2).depositForBurnWithHook(
+            ITokenMessengerV2(tokenMessengerV2).depositForBurnWithHook(
                 amount,
                 destinationDomain,
                 mintRecipient,
@@ -156,12 +158,12 @@ contract CrosschainEscrow {
             token:                usdc,
             amount:               amount,
             executed:             true,
-            cctpNonce:            nonce,
+            cctpNonce:            0, // CCTP v2 emits nonce in DepositForBurn event, not as return value
             hookData:             hookData,
             conditionDescription: conditionDescription
         });
 
-        emit TransferInitiated(id, msg.sender, recipient, destinationDomain, amount, nonce, hookData);
+        emit TransferInitiated(id, msg.sender, recipient, destinationDomain, amount, 0, hookData);
     }
 
     /**
