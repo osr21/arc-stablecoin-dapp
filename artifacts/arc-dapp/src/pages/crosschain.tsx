@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { createWalletClient, createPublicClient, custom, http, encodeFunctionData } from "viem";
-import { useListCrosschainTransfers, useCreateCrosschainTransfer, getListCrosschainTransfersQueryKey } from "@workspace/api-client-react";
+import { useListCrosschainTransfers, useCreateCrosschainTransfer, useUpdateCrosschainTransferStatus, getListCrosschainTransfersQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +60,7 @@ function formatEth(wei: bigint): string {
   return (Number(wei) / 1e18).toFixed(5);
 }
 
-function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: string }) {
+function ReceiveDialog({ txHash, destChain, transferId }: { txHash: string; destChain: string; transferId: number }) {
   const [open, setOpen]         = useState(false);
   const [attest, setAttest]     = useState<AttestationResult | null>(null);
   const [polling, setPolling]   = useState(false);
@@ -69,6 +69,15 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
   const [err, setErr]           = useState<string | null>(null);
   const [copied, setCopied]     = useState(false);
   const [destBalance, setDestBalance] = useState<bigint | null>(null);
+
+  const queryClient = useQueryClient();
+  const updateStatus = useUpdateCrosschainTransferStatus({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListCrosschainTransfersQueryKey() });
+      },
+    },
+  });
 
   const destConfig = DEST_CHAIN_CONFIGS[destChain];
 
@@ -118,6 +127,15 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
   useEffect(() => {
     if (attest?.attestation) checkDestBalance();
   }, [attest?.attestation, checkDestBalance]);
+
+  // Flip status to "attesting" once Circle has signed the message
+  const [markedAttesting, setMarkedAttesting] = useState(false);
+  useEffect(() => {
+    if (attest?.attestation && !markedAttesting) {
+      setMarkedAttesting(true);
+      updateStatus.mutate({ id: transferId, data: { status: "attesting" } });
+    }
+  }, [attest?.attestation, markedAttesting, transferId, updateStatus]);
 
   const copyText = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -174,6 +192,7 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
       });
       await pc.waitForTransactionReceipt({ hash });
       setClaimTx(hash);
+      updateStatus.mutate({ id: transferId, data: { status: "complete", mintTxHash: hash } });
     } catch (e: any) {
       setErr(e.shortMessage ?? e.message ?? "Claim failed");
     } finally {
@@ -561,7 +580,7 @@ export default function Crosschain() {
                   </a>
                 </TableCell>
                 <TableCell>
-                  <ReceiveDialog txHash={tx.burnTxHash} destChain={tx.destChain} />
+                  <ReceiveDialog txHash={tx.burnTxHash} destChain={tx.destChain} transferId={tx.id} />
                 </TableCell>
               </TableRow>
             ))}

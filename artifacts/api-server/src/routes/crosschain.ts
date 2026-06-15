@@ -5,7 +5,16 @@ import {
   ListCrosschainTransfersQueryParams,
   CreateCrosschainTransferBody,
   GetCrosschainTransferParams,
+  UpdateCrosschainTransferStatusParams,
+  UpdateCrosschainTransferStatusBody,
 } from "@workspace/api-zod";
+
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  pending:   ["attesting", "failed"],
+  attesting: ["complete", "failed"],
+  complete:  [],
+  failed:    [],
+};
 
 const router = Router();
 
@@ -104,6 +113,53 @@ router.get("/:id", async (req, res) => {
     ...transfer,
     createdAt: transfer.createdAt.toISOString(),
     updatedAt: transfer.updatedAt.toISOString(),
+  });
+});
+
+router.patch("/:id", async (req, res) => {
+  const params = UpdateCrosschainTransferStatusParams.safeParse({ id: Number(req.params.id) });
+  if (!params.success) return res.status(400).json({ error: "Invalid id" });
+
+  const body = UpdateCrosschainTransferStatusBody.safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: "Invalid body", details: body.error.issues });
+
+  const [existing] = await db
+    .select()
+    .from(crosschainTransfersTable)
+    .where(eq(crosschainTransfersTable.id, params.data.id));
+
+  if (!existing) return res.status(404).json({ error: "Not found" });
+
+  const allowed = VALID_TRANSITIONS[existing.status] ?? [];
+  if (!allowed.includes(body.data.status)) {
+    return res.status(409).json({
+      error: `Invalid transition: ${existing.status} → ${body.data.status}`,
+    });
+  }
+
+  const [updated] = await db
+    .update(crosschainTransfersTable)
+    .set({
+      status:     body.data.status,
+      mintTxHash: body.data.mintTxHash ?? existing.mintTxHash,
+      updatedAt:  new Date(),
+    })
+    .where(eq(crosschainTransfersTable.id, params.data.id))
+    .returning();
+
+  if (body.data.status === "complete") {
+    await db.insert(activityLogTable).values({
+      type:        "crosschain_complete",
+      description: `Cross-chain transfer of ${updated.amount} ${updated.token} from ${updated.sourceChain} to ${updated.destChain} completed`,
+      txHash:      body.data.mintTxHash ?? updated.burnTxHash,
+      chainId:     updated.chainId,
+    });
+  }
+
+  return res.json({
+    ...updated,
+    createdAt: updated.createdAt.toISOString(),
+    updatedAt: updated.updatedAt.toISOString(),
   });
 });
 

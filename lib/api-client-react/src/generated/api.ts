@@ -22,6 +22,7 @@ import type {
 import type {
   ActivityItem,
   CctpAttestation,
+  CrosschainStatusUpdate,
   CrosschainTransfer,
   CrosschainTransferInput,
   DashboardStats,
@@ -1042,6 +1043,78 @@ export function useGetCrosschainTransfer<TData = Awaited<ReturnType<typeof getCr
 
 
 
+
+export const getUpdateCrosschainTransferStatusUrl = (id: number,) => {
+
+
+
+
+  return `/api/crosschain/${id}`
+}
+
+/**
+ * @summary Update cross-chain transfer status
+ */
+export const updateCrosschainTransferStatus = async (id: number,
+    crosschainStatusUpdate: CrosschainStatusUpdate, options?: RequestInit): Promise<CrosschainTransfer> => {
+
+  return customFetch<CrosschainTransfer>(getUpdateCrosschainTransferStatusUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      crosschainStatusUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateCrosschainTransferStatusMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCrosschainTransferStatus>>, TError,{id: number;data: BodyType<CrosschainStatusUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCrosschainTransferStatus>>, TError,{id: number;data: BodyType<CrosschainStatusUpdate>}, TContext> => {
+
+const mutationKey = ['updateCrosschainTransferStatus'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCrosschainTransferStatus>>, {id: number;data: BodyType<CrosschainStatusUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateCrosschainTransferStatus(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCrosschainTransferStatusMutationResult = NonNullable<Awaited<ReturnType<typeof updateCrosschainTransferStatus>>>
+    export type UpdateCrosschainTransferStatusMutationBody = BodyType<CrosschainStatusUpdate>
+    export type UpdateCrosschainTransferStatusMutationError = ErrorType<void>
+
+    /**
+ * @summary Update cross-chain transfer status
+ */
+export const useUpdateCrosschainTransferStatus = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCrosschainTransferStatus>>, TError,{id: number;data: BodyType<CrosschainStatusUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCrosschainTransferStatus>>,
+        TError,
+        {id: number;data: BodyType<CrosschainStatusUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateCrosschainTransferStatusMutationOptions(options));
+    }
 
 export const getGetCctpAttestationUrl = (txHash: string,) => {
 

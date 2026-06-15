@@ -312,6 +312,32 @@ paths:
         "404":
           description: Not found
 
+    patch:
+      operationId: updateCrosschainTransferStatus
+      tags: [crosschain]
+      summary: Update cross-chain transfer status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrosschainStatusUpdate"
+      responses:
+        "200":
+          description: Updated transfer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrosschainTransfer"
+        "404":
+          description: Not found
+
   /cctp/attestation/{txHash}:
     get:
       operationId: getCctpAttestation
@@ -649,6 +675,17 @@ components:
           type: integer
         destChainId:
           type: integer
+
+    CrosschainStatusUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [pending, attesting, complete, failed]
+        mintTxHash:
+          type: string
+          description: Mint transaction hash on destination chain (required when status=complete)
 
     CctpAttestation:
       type: object

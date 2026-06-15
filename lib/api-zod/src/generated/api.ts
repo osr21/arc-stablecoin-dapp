@@ -351,6 +351,40 @@ export const GetCrosschainTransferResponse = zod.object({
 
 
 /**
+ * @summary Update cross-chain transfer status
+ */
+export const UpdateCrosschainTransferStatusParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateCrosschainTransferStatusBody = zod.object({
+  "status": zod.enum(['pending', 'attesting', 'complete', 'failed']),
+  "mintTxHash": zod.string().optional().describe('Mint transaction hash on destination chain (required when status=complete)')
+})
+
+export const UpdateCrosschainTransferStatusResponse = zod.object({
+  "id": zod.number(),
+  "sender": zod.string(),
+  "recipient": zod.string(),
+  "sourceChain": zod.string().describe('Source chain name'),
+  "destChain": zod.string().describe('Destination chain name'),
+  "token": zod.enum(['USDC', 'EURC']),
+  "amount": zod.string(),
+  "status": zod.enum(['pending', 'attesting', 'minting', 'complete', 'failed']),
+  "burnTxHash": zod.string().describe('CCTP burn transaction hash on source chain'),
+  "mintTxHash": zod.string().nullish().describe('CCTP mint transaction hash on dest chain'),
+  "messageHash": zod.string().nullish(),
+  "attestation": zod.string().nullish().describe('Circle IRIS attestation bytes'),
+  "hookData": zod.string().nullish().describe('Encoded hook data for conditional post-transfer logic'),
+  "sourceChainId": zod.number().optional(),
+  "destChainId": zod.number().optional(),
+  "chainId": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
  * Proxies to Circle IRIS API to retrieve attestation needed for CCTP mint. Defaults to Arc Testnet as source chain.
  * @summary Get Circle CCTP attestation for a burn transaction
  */

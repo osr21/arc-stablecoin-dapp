@@ -10,6 +10,8 @@ export * from './activityItem';
 export * from './activityItemType';
 export * from './cctpAttestation';
 export * from './cctpAttestationStatus';
+export * from './crosschainStatusUpdate';
+export * from './crosschainStatusUpdateStatus';
 export * from './crosschainTransfer';
 export * from './crosschainTransferInput';
 export * from './crosschainTransferInputToken';

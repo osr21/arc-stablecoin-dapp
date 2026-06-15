@@ -269,6 +269,22 @@ export interface CrosschainTransferInput {
   destChainId?: number;
 }
 
+export type CrosschainStatusUpdateStatus = typeof CrosschainStatusUpdateStatus[keyof typeof CrosschainStatusUpdateStatus];
+
+
+export const CrosschainStatusUpdateStatus = {
+  pending: 'pending',
+  attesting: 'attesting',
+  complete: 'complete',
+  failed: 'failed',
+} as const;
+
+export interface CrosschainStatusUpdate {
+  status: CrosschainStatusUpdateStatus;
+  /** Mint transaction hash on destination chain (required when status=complete) */
+  mintTxHash?: string;
+}
+
 export type CctpAttestationStatus = typeof CctpAttestationStatus[keyof typeof CctpAttestationStatus];
 
 
