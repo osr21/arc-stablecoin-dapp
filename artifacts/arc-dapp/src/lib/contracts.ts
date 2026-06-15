@@ -107,6 +107,41 @@ export const DEST_DOMAINS: Record<string, number> = {
   "Base Sepolia":     6,
 };
 
+// MessageTransmitterV2 is deployed at the same CREATE2 address on all CCTP v2 chains
+export const MESSAGE_TRANSMITTER_V2_ADDRESS = "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275" as `0x${string}`;
+
+export interface DestChainConfig {
+  chainId: number;
+  name: string;
+  rpc: string;
+  explorerTx: string;
+  nativeCurrency: { name: string; symbol: string; decimals: number };
+}
+
+export const DEST_CHAIN_CONFIGS: Record<string, DestChainConfig> = {
+  "Ethereum Sepolia": {
+    chainId: 11155111,
+    name: "Ethereum Sepolia",
+    rpc: "https://ethereum-sepolia-rpc.publicnode.com",
+    explorerTx: "https://sepolia.etherscan.io/tx",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  },
+  "Arbitrum Sepolia": {
+    chainId: 421614,
+    name: "Arbitrum Sepolia",
+    rpc: "https://sepolia-rollup.arbitrum.io/rpc",
+    explorerTx: "https://sepolia.arbiscan.io/tx",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  },
+  "Base Sepolia": {
+    chainId: 84532,
+    name: "Base Sepolia",
+    rpc: "https://sepolia.base.org",
+    explorerTx: "https://sepolia.basescan.org/tx",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  },
+};
+
 export function parseToken(human: string): bigint {
   return parseUnits(human || "0", 6);
 }

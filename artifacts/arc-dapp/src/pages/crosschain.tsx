@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { createWalletClient, createPublicClient, custom, http, encodeFunctionData } from "viem";
 import { useListCrosschainTransfers, useCreateCrosschainTransfer, getListCrosschainTransfersQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -11,57 +12,61 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { useWallet } from "../lib/wallet";
 import { formatTokenAmount } from "../lib/format";
-import { CONTRACT_ADDRESSES, CROSSCHAIN_ESCROW_ABI, ERC20_ABI, DEST_DOMAINS, parseToken, ARC_TESTNET } from "../lib/contracts";
+import {
+  CONTRACT_ADDRESSES, CROSSCHAIN_ESCROW_ABI, ERC20_ABI, DEST_DOMAINS,
+  DEST_CHAIN_CONFIGS, MESSAGE_TRANSMITTER_V2_ADDRESS,
+  parseToken, ARC_TESTNET,
+} from "../lib/contracts";
 import type { Address } from "viem";
-import { encodeFunctionData } from "viem";
 
 const STATUS_LABELS: Record<string, string> = {
-  pending:    "Pending",
-  attesting:  "Attesting",
-  complete:   "Complete",
-  failed:     "Failed",
+  pending:   "Pending",
+  attesting: "Attesting",
+  complete:  "Complete",
+  failed:    "Failed",
 };
 
 const RECEIVE_MESSAGE_ABI = [
   {
     name: "receiveMessage",
-    type: "function",
-    stateMutability: "nonpayable",
+    type: "function" as const,
+    stateMutability: "nonpayable" as const,
     inputs: [
-      { name: "message",     type: "bytes" },
-      { name: "attestation", type: "bytes" },
+      { name: "message",     type: "bytes" as const },
+      { name: "attestation", type: "bytes" as const },
     ],
-    outputs: [{ name: "success", type: "bool" }],
+    outputs: [{ name: "success", type: "bool" as const }],
   },
-] as const;
+];
 
 interface AttestationResult {
   status: string;
   messageHash: string | null;
   messageBytes: string | null;
   attestation: string | null;
-  receiveTarget: {
-    chain: string;
-    address: string;
-    explorerBase: string;
-  } | null;
+  receiveTarget: { chain: string; address: string; explorerBase: string } | null;
 }
 
 function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: string }) {
-  const [open, setOpen] = useState(false);
-  const [attest, setAttest] = useState<AttestationResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [open, setOpen]           = useState(false);
+  const [attest, setAttest]       = useState<AttestationResult | null>(null);
+  const [polling, setPolling]     = useState(false);
+  const [claiming, setClaiming]   = useState(false);
+  const [claimTx, setClaimTx]     = useState<string | null>(null);
+  const [claimErr, setClaimErr]   = useState<string | null>(null);
+  const [copied, setCopied]       = useState(false);
+
+  const destConfig = DEST_CHAIN_CONFIGS[destChain];
 
   const poll = useCallback(async () => {
-    setLoading(true);
+    setPolling(true);
     try {
       const res = await fetch(`/api/cctp/attestation/${txHash}`);
       const data: AttestationResult = await res.json();
       setAttest(data);
     } catch {
     } finally {
-      setLoading(false);
+      setPolling(false);
     }
   }, [txHash]);
 
@@ -72,21 +77,85 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
     return () => clearInterval(id);
   }, [open, poll]);
 
-  const receiveCalldata = attest?.messageBytes && attest?.attestation
-    ? encodeFunctionData({
-        abi: RECEIVE_MESSAGE_ABI,
-        functionName: "receiveMessage",
-        args: [attest.messageBytes as `0x${string}`, attest.attestation as `0x${string}`],
-      })
-    : null;
-
   const copyText = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const target = attest?.receiveTarget;
+  const handleClaim = async () => {
+    if (!attest?.messageBytes || !attest?.attestation) return;
+    if (!destConfig) { setClaimErr("Destination chain config not found"); return; }
+
+    const eth = (window as any).ethereum;
+    if (!eth) { setClaimErr("MetaMask required to claim"); return; }
+
+    setClaimErr(null);
+    setClaiming(true);
+    try {
+      // 1. Switch MetaMask to destination chain
+      const chainHex = `0x${destConfig.chainId.toString(16)}`;
+      try {
+        await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: chainHex }] });
+      } catch (switchErr: any) {
+        if (switchErr.code === 4902) {
+          await eth.request({
+            method: "wallet_addEthereumChain",
+            params: [{
+              chainId: chainHex,
+              chainName: destConfig.name,
+              nativeCurrency: destConfig.nativeCurrency,
+              rpcUrls: [destConfig.rpc],
+            }],
+          });
+        } else {
+          throw switchErr;
+        }
+      }
+
+      // 2. Build a walletClient for the destination chain
+      const accounts: string[] = await eth.request({ method: "eth_accounts" });
+      const account = accounts[0] as Address;
+
+      const destViemChain = {
+        id: destConfig.chainId,
+        name: destConfig.name,
+        nativeCurrency: destConfig.nativeCurrency,
+        rpcUrls: { default: { http: [destConfig.rpc] }, public: { http: [destConfig.rpc] } },
+      } as const;
+
+      const wc = createWalletClient({ chain: destViemChain as any, transport: custom(eth) });
+      const pc = createPublicClient({ chain: destViemChain as any, transport: http(destConfig.rpc) });
+
+      // 3. Call receiveMessage on destination MessageTransmitterV2
+      const hash = await wc.writeContract({
+        address: MESSAGE_TRANSMITTER_V2_ADDRESS,
+        abi: RECEIVE_MESSAGE_ABI,
+        functionName: "receiveMessage",
+        args: [attest.messageBytes as `0x${string}`, attest.attestation as `0x${string}`],
+        account,
+        chain: destViemChain as any,
+      });
+
+      await pc.waitForTransactionReceipt({ hash });
+      setClaimTx(hash);
+    } catch (err: any) {
+      setClaimErr(err.shortMessage ?? err.message ?? "Claim failed");
+    } finally {
+      setClaiming(false);
+    }
+  };
+
+  const isReady = !!attest?.attestation;
+  const hasMsg  = !!attest?.messageBytes;
+
+  const calldata = isReady
+    ? encodeFunctionData({
+        abi: RECEIVE_MESSAGE_ABI,
+        functionName: "receiveMessage",
+        args: [attest!.messageBytes as `0x${string}`, attest!.attestation as `0x${string}`],
+      })
+    : null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -101,128 +170,137 @@ function ReceiveDialog({ txHash, destChain }: { txHash: string; destChain: strin
         </DialogHeader>
 
         <div className="space-y-4 pt-2 text-sm">
-          {/* Step flow */}
+          {/* Step progress */}
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
             {[
-              { n: 1, label: "Burn on Arc", done: true },
-              { n: 2, label: "Circle attests", done: attest?.status === "complete" },
-              { n: 3, label: "Mint on destination", done: false },
-            ].map(step => (
-              <div key={step.n} className={`rounded-md p-2 border ${step.done ? "border-green-500/40 bg-green-500/10 text-green-400" : "border-border bg-muted/40 text-muted-foreground"}`}>
-                <div className="font-semibold">{step.done ? "✓" : step.n}</div>
-                <div>{step.label}</div>
+              { label: "Burn on Arc",         done: true },
+              { label: "Circle attests",       done: isReady },
+              { label: "Mint on destination",  done: !!claimTx },
+            ].map((s, i) => (
+              <div key={i} className={`rounded-md p-2 border ${s.done ? "border-green-500/40 bg-green-500/10 text-green-400" : "border-border bg-muted/40 text-muted-foreground"}`}>
+                <div className="font-semibold">{s.done ? "✓" : i + 1}</div>
+                <div>{s.label}</div>
               </div>
             ))}
           </div>
 
-          {/* Attestation status */}
-          <div className="rounded-md border border-border p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Attestation status</span>
-              <div className="flex items-center gap-2">
-                <Badge variant={attest?.status === "complete" ? "secondary" : "outline"}>
-                  {loading && !attest ? "Checking…" : attest?.status === "complete" ? "Ready" : "Pending"}
-                </Badge>
-                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={poll} disabled={loading}>
-                  {loading ? "…" : "Refresh"}
-                </Button>
-              </div>
+          {/* Claim success */}
+          {claimTx && (
+            <div className="rounded-md border border-green-500/40 bg-green-500/10 p-3 space-y-1">
+              <p className="text-green-400 font-medium">✓ USDC minted on {destChain}</p>
+              <a
+                href={`${destConfig?.explorerTx}/${claimTx}`}
+                target="_blank" rel="noreferrer"
+                className="text-xs font-mono text-primary hover:underline break-all"
+              >
+                {claimTx} ↗
+              </a>
             </div>
-            {attest?.messageHash && (
-              <div className="text-xs font-mono text-muted-foreground truncate">
-                Hash: {attest.messageHash}
-              </div>
-            )}
-            {attest?.status !== "complete" && (
-              <p className="text-xs text-muted-foreground">
-                Circle IRIS monitors the Arc burn event and generates a signature once the block is finalized.
-                This typically takes 10–30 minutes on testnet.
-              </p>
-            )}
-          </div>
+          )}
 
-          {/* Message bytes — always show once fetched */}
-          {attest?.messageBytes && (
+          {/* Attestation status + claim button */}
+          {!claimTx && (
+            <div className="rounded-md border border-border p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Attestation</span>
+                <div className="flex items-center gap-2">
+                  <Badge variant={isReady ? "secondary" : "outline"}>
+                    {polling && !attest ? "Checking…" : isReady ? "Ready" : "Pending"}
+                  </Badge>
+                  <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={poll} disabled={polling}>
+                    {polling ? "…" : "Refresh"}
+                  </Button>
+                </div>
+              </div>
+
+              {!isReady && (
+                <p className="text-xs text-muted-foreground">
+                  Circle IRIS monitors the Arc burn and signs off once the block is finalized (~10–30 min).
+                  Polling every 15 s.
+                </p>
+              )}
+
+              {/* Claim button */}
+              <Button
+                className="w-full"
+                disabled={!isReady || claiming || !destConfig}
+                onClick={handleClaim}
+              >
+                {claiming
+                  ? "Switching chain & claiming…"
+                  : isReady
+                  ? `Claim USDC on ${destChain}`
+                  : "Waiting for attestation…"}
+              </Button>
+              {claimErr && <p className="text-xs text-destructive">{claimErr}</p>}
+              {isReady && destConfig && (
+                <p className="text-xs text-muted-foreground text-center">
+                  MetaMask will switch to {destChain} and submit the receive transaction.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Message bytes — copy for manual use */}
+          {hasMsg && (
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-xs">Message bytes (from Arc MessageSent event)</span>
-                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => copyText(attest.messageBytes!)}>
+                <span className="text-muted-foreground text-xs">Message bytes</span>
+                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => copyText(attest!.messageBytes!)}>
                   {copied ? "Copied!" : "Copy"}
                 </Button>
               </div>
-              <div className="font-mono text-xs bg-muted rounded-md p-2 break-all leading-relaxed max-h-20 overflow-y-auto">
-                {attest.messageBytes}
+              <div className="font-mono text-xs bg-muted rounded-md p-2 break-all leading-relaxed max-h-16 overflow-y-auto">
+                {attest!.messageBytes}
               </div>
             </div>
           )}
 
           {/* Attestation signature */}
-          {attest?.attestation && (
+          {isReady && (
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-xs">Circle attestation signature</span>
-                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => copyText(attest.attestation!)}>
+                <span className="text-muted-foreground text-xs">Circle attestation</span>
+                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => copyText(attest!.attestation!)}>
                   Copy
                 </Button>
               </div>
-              <div className="font-mono text-xs bg-muted rounded-md p-2 break-all leading-relaxed max-h-20 overflow-y-auto">
-                {attest.attestation}
+              <div className="font-mono text-xs bg-muted rounded-md p-2 break-all leading-relaxed max-h-16 overflow-y-auto">
+                {attest!.attestation}
               </div>
             </div>
           )}
 
-          {/* Receive instructions */}
-          <div className="rounded-md border border-border p-3 space-y-3">
-            <p className="font-medium">How to receive on {destChain}</p>
-            <ol className="space-y-2 text-xs text-muted-foreground list-decimal list-inside">
-              <li>
-                Open{" "}
-                {target ? (
-                  <a
-                    href={`${target.explorerBase}/${target.address}#writeProxyContract`}
-                    target="_blank" rel="noreferrer"
-                    className="text-primary underline font-mono"
-                  >
-                    MessageTransmitterV2 on {target.chain}
-                  </a>
-                ) : (
-                  <span className="font-mono">MessageTransmitterV2</span>
-                )}
-              </li>
-              <li>Connect your wallet (switch to {destChain})</li>
-              <li>
-                Call <code className="bg-muted px-1 rounded">receiveMessage</code> with:
-                <ul className="ml-4 mt-1 space-y-1">
-                  <li><strong>message:</strong> the message bytes above</li>
-                  <li><strong>attestation:</strong> the Circle signature above (available once attested)</li>
-                </ul>
-              </li>
-              <li>USDC mints to your recipient address</li>
-            </ol>
-
-            {target && (
-              <div className="text-xs space-y-1">
-                <p className="text-muted-foreground">Contract address on {target.chain}:</p>
-                <p className="font-mono text-xs break-all">{target.address}</p>
+          {/* Full calldata for manual/advanced use */}
+          {calldata && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                Raw calldata (advanced)
+              </summary>
+              <div className="mt-2 space-y-1">
+                <div className="font-mono bg-muted rounded-md p-2 break-all leading-relaxed max-h-20 overflow-y-auto">
+                  {calldata}
+                </div>
+                <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => copyText(calldata)}>
+                  Copy calldata
+                </Button>
               </div>
+            </details>
+          )}
+
+          <div className="text-xs text-muted-foreground border-t border-border pt-3 flex gap-4">
+            <a href={`https://testnet.arcscan.app/tx/${txHash}`} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+              Burn tx ↗
+            </a>
+            {attest?.receiveTarget && (
+              <a
+                href={`${attest.receiveTarget.explorerBase}/${attest.receiveTarget.address}#writeContract`}
+                target="_blank" rel="noreferrer"
+                className="text-primary hover:underline"
+              >
+                MessageTransmitterV2 on {destChain} ↗
+              </a>
             )}
-          </div>
-
-          {/* Ready calldata */}
-          {receiveCalldata && (
-            <div className="rounded-md border border-green-500/30 bg-green-500/10 p-3 space-y-2">
-              <p className="text-green-400 font-medium text-xs">✓ Attestation ready — calldata for receiveMessage:</p>
-              <div className="font-mono text-xs bg-black/20 rounded p-2 break-all max-h-20 overflow-y-auto leading-relaxed">
-                {receiveCalldata}
-              </div>
-              <Button variant="outline" size="sm" className="w-full text-xs border-green-500/40 text-green-400" onClick={() => copyText(receiveCalldata)}>
-                Copy full calldata
-              </Button>
-            </div>
-          )}
-
-          <div className="text-xs text-muted-foreground border-t border-border pt-3">
-            <p>Burn tx: <a href={`https://testnet.arcscan.app/tx/${txHash}`} target="_blank" rel="noreferrer" className="text-primary font-mono hover:underline">{txHash.slice(0, 18)}…</a></p>
           </div>
         </div>
       </DialogContent>
@@ -236,16 +314,21 @@ export default function Crosschain() {
   const { address, walletClient, publicClient, isConnected, isWrongNetwork, switchToArc } = useWallet();
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [txPending, setTxPending] = useState(false);
-  const [formData, setFormData] = useState({
-    recipient: "",
-    destChain: "Base Sepolia",
-    amount: "",
+  const [txPending, setTxPending]   = useState(false);
+  const [formData, setFormData]     = useState({
+    recipient:            "",
+    destChain:            "Base Sepolia",
+    amount:               "",
     conditionDescription: "Unconditional CCTP transfer",
   });
 
   const createTransfer = useCreateCrosschainTransfer({
-    mutation: { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListCrosschainTransfersQueryKey() }); setCreateOpen(false); } },
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListCrosschainTransfersQueryKey() });
+        setCreateOpen(false);
+      },
+    },
   });
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -255,7 +338,7 @@ export default function Crosschain() {
 
     setTxPending(true);
     try {
-      const rawAmount = parseToken(formData.amount);
+      const rawAmount  = parseToken(formData.amount);
       const destDomain = DEST_DOMAINS[formData.destChain] ?? 6;
 
       const approveTx = await walletClient.writeContract({
@@ -316,6 +399,7 @@ export default function Crosschain() {
             <span className="font-mono text-xs">{CONTRACT_ADDRESSES.CROSSCHAIN_ESCROW}</span>
           </p>
         </div>
+
         {isConnected && isWrongNetwork && (
           <Button variant="destructive" size="sm" onClick={switchToArc}>Switch to Arc Testnet</Button>
         )}
@@ -331,7 +415,11 @@ export default function Crosschain() {
                 </div>
                 <div className="space-y-2">
                   <Label>Recipient Address (on destination chain)</Label>
-                  <Input required value={formData.recipient} onChange={e => setFormData({...formData, recipient: e.target.value})} placeholder="0x..." className="font-mono text-xs" />
+                  <Input
+                    required value={formData.recipient}
+                    onChange={e => setFormData({ ...formData, recipient: e.target.value })}
+                    placeholder="0x…" className="font-mono text-xs"
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -340,11 +428,11 @@ export default function Crosschain() {
                   </div>
                   <div className="space-y-2">
                     <Label>Destination Chain</Label>
-                    <Select value={formData.destChain} onValueChange={v => setFormData({...formData, destChain: v})}>
+                    <Select value={formData.destChain} onValueChange={v => setFormData({ ...formData, destChain: v })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Base Sepolia">Base Sepolia (domain 6)</SelectItem>
                         <SelectItem value="Ethereum Sepolia">Ethereum Sepolia (domain 0)</SelectItem>
+                        <SelectItem value="Base Sepolia">Base Sepolia (domain 6)</SelectItem>
                         <SelectItem value="Arbitrum Sepolia">Arbitrum Sepolia (domain 3)</SelectItem>
                       </SelectContent>
                     </Select>
@@ -352,25 +440,35 @@ export default function Crosschain() {
                 </div>
                 <div className="space-y-2">
                   <Label>USDC Amount</Label>
-                  <Input required type="number" step="0.000001" min="0.000001" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} placeholder="0.00" />
+                  <Input
+                    required type="number" step="0.000001" min="0.000001"
+                    value={formData.amount}
+                    onChange={e => setFormData({ ...formData, amount: e.target.value })}
+                    placeholder="0.00"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Condition Description</Label>
-                  <Input value={formData.conditionDescription} onChange={e => setFormData({...formData, conditionDescription: e.target.value})} />
+                  <Input
+                    value={formData.conditionDescription}
+                    onChange={e => setFormData({ ...formData, conditionDescription: e.target.value })}
+                  />
                 </div>
                 <div className="bg-muted/50 rounded-md p-3 text-xs text-muted-foreground space-y-1">
                   <p>CCTP Domain: {formData.destChain} → {DEST_DOMAINS[formData.destChain] ?? "?"}</p>
-                  <p>Two txs: approve USDC, then depositForBurn via CrosschainEscrow.</p>
-                  <p>After burn confirms, click <strong>Receive ↗</strong> in the table to get your message bytes and attestation.</p>
+                  <p>Two txs: approve USDC spend, then depositForBurn via CrosschainEscrow.</p>
+                  <p>Once Circle attests the burn, click <strong>Receive ↗</strong> in the table to mint USDC on the destination chain.</p>
                 </div>
                 <Button type="submit" className="w-full mt-4" disabled={txPending}>
-                  {txPending ? "Waiting for wallet..." : "Approve & Burn via CCTP v2"}
+                  {txPending ? "Waiting for wallet…" : "Approve & Burn via CCTP v2"}
                 </Button>
               </form>
             </DialogContent>
           </Dialog>
         )}
-        {!isConnected && <p className="text-sm text-muted-foreground">Connect wallet to initiate transfers</p>}
+        {!isConnected && (
+          <p className="text-sm text-muted-foreground">Connect wallet to initiate transfers</p>
+        )}
       </div>
 
       <Card className="bg-card/50 border-border">
@@ -386,7 +484,7 @@ export default function Crosschain() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={5} className="text-center py-8">Loading…</TableCell></TableRow>
             ) : !transfers?.length ? (
               <TableRow><TableCell colSpan={5} className="text-center py-12 text-muted-foreground">No transfers yet.</TableCell></TableRow>
             ) : transfers.map((tx) => (
