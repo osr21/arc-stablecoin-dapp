@@ -1,140 +1,205 @@
 # Smart Contract Reference
 
-All contracts are deployed on **Arc Testnet** (Chain ID: 5042002) and verified on [ArcScan](https://testnet.arcscan.app).
+  All Arc Testnet contracts are deployed on **Arc Testnet** (Chain ID: 5042002) and verified on [ArcScan](https://testnet.arcscan.app). TimeLockHook is deployed on destination chains and verified on Blockscout.
 
-## ConditionalEscrow
+  > **Security audit completed June 2026.** See [security-audit.md](security-audit.md) for the full report and patch descriptions.
 
-**Address:** [`0x5c4927C8b3b627415E78a151B68B07A079Bd21c1`](https://testnet.arcscan.app/address/0x5c4927C8b3b627415E78a151B68B07A079Bd21c1)
+  ---
 
-Holds USDC or EURC in escrow, releasing funds only when a specified condition is met. Supports dispute resolution via an arbiter.
+  ## ConditionalEscrow
 
-### State Machine
+  **Network:** Arc Testnet  
+  **Address:** [`0xe64a01283af91a601ebf5a86efe36312783330e8`](https://testnet.arcscan.app/address/0xe64a01283af91a601ebf5a86efe36312783330e8)
 
-```
-created → active → complete
-                 → disputed → resolved (released or refunded)
-```
+  Holds USDC or EURC in escrow, releasing funds only when a specified condition is met. Supports dispute resolution via an arbiter.
 
-### Functions
+  ### State Machine
 
-```solidity
-// Create a new escrow
-function createEscrow(
-    address beneficiary,
-    address token,           // USDC: 0x3600...0000  |  EURC: 0x89B5...D72a
-    uint256 amount,          // raw 6-decimal units (1000000 = 1 USDC)
-    ConditionType condition, // 0=TIME_BASED, 1=MILESTONE, 2=ORACLE
-    uint256 conditionValue,  // unix timestamp for TIME_BASED; ignored for others
-    address arbiter,         // address authorised to resolve disputes
-    string calldata description
-) external returns (uint256 escrowId);
+  ```
+  created → active → complete
+                   → disputed → resolved (released or refunded)
+  ```
 
-// Payer releases funds to beneficiary (if condition met)
-function releaseEscrow(uint256 escrowId) external;
+  ### Security notes
+  - `release()` is restricted to the **depositor only** — beneficiary cannot self-pay (SA-01 fix).
+  - `createEscrow()` requires `arbiter ≠ beneficiary` and `arbiter ≠ depositor` (SA-03 fix).
 
-// Either party raises a dispute
-function raiseDispute(uint256 escrowId) external;
+  ### Functions
 
-// Arbiter resolves: true = release to beneficiary, false = refund to payer
-function resolveDispute(uint256 escrowId, bool releaseToBeneficiary) external;
-```
+  ```solidity
+  // Create a new escrow
+  function createEscrow(
+      address beneficiary,
+      address arbiter,         // must not equal beneficiary or depositor
+      address token,           // USDC: 0x3600...0000  |  EURC: 0x89B5...D72a
+      uint256 amount,          // raw 6-decimal units (1000000 = 1 USDC)
+      ConditionType condition, // 0=TIME_BASED, 1=MILESTONE, 2=ORACLE
+      uint256 conditionValue,  // unix timestamp for TIME_BASED; ignored for others
+      string calldata description
+  ) external returns (uint256 escrowId);
 
-### Events
+  // Depositor explicitly releases funds to beneficiary
+  function release(uint256 id) external;
 
-```solidity
-event EscrowCreated(uint256 indexed id, address payer, address beneficiary, address token, uint256 amount);
-event EscrowReleased(uint256 indexed id);
-event DisputeRaised(uint256 indexed id, address raisedBy);
-event DisputeResolved(uint256 indexed id, bool releasedToBeneficiary);
-```
+  // Anyone can release after the time condition is met
+  function autoRelease(uint256 id) external;
 
----
+  // Either party raises a dispute
+  function raiseDispute(uint256 id) external;
 
-## PayrollVesting
+  // Arbiter resolves: true = release to beneficiary, false = refund to depositor
+  function resolveDispute(uint256 id, bool releaseToBeneficiary) external;
+  ```
 
-**Address:** [`0xDB7672E26f203a0f37b93042Df150D2E95831387`](https://testnet.arcscan.app/address/0xDB7672E26f203a0f37b93042Df150D2E95831387)
+  ### Events
 
-Cliff + linear vesting for USDC payroll. The employer locks total tokens upfront; the employee claims vested amounts on-demand.
+  ```solidity
+  event EscrowCreated(uint256 indexed id, address depositor, address beneficiary, address token, uint256 amount);
+  event EscrowReleased(uint256 indexed id);
+  event DisputeRaised(uint256 indexed id, address raisedBy);
+  event DisputeResolved(uint256 indexed id, bool releasedToBeneficiary);
+  ```
 
-### Vesting Formula
+  ---
 
-```
-Vested at time T (after cliff):
-  vestedAmount = totalAmount × (T - cliffEnd) / vestingDuration
-  claimable    = vestedAmount - alreadyClaimed
-```
+  ## PayrollVesting
 
-### Functions
+  **Network:** Arc Testnet  
+  **Address:** [`0xdc14d0a5233173776fc4ea1007251afb174d67e8`](https://testnet.arcscan.app/address/0xdc14d0a5233173776fc4ea1007251afb174d67e8)
 
-```solidity
-// Employer creates a vesting schedule (must approve token spend first)
-function createVestingSchedule(
-    address employee,
-    address token,
-    uint256 totalAmount,      // raw 6-decimal units
-    uint256 cliffDuration,    // seconds until cliff
-    uint256 vestingDuration   // seconds of linear vesting after cliff
-) external returns (uint256 scheduleId);
+  Cliff + linear vesting for USDC payroll. The employer locks total tokens upfront; the employee claims vested amounts on-demand.
 
-// Employee claims all currently vested tokens
-function claimVested(uint256 scheduleId) external;
+  ### Vesting Formula
 
-// Employer revokes: unvested tokens returned to employer
-function revokeSchedule(uint256 scheduleId) external;
-```
+  ```
+  Vested at time T (after cliff):
+    vestedAmount = totalAmount × (T - cliffEnd) / vestingDuration
+    claimable    = vestedAmount - alreadyClaimed
+  ```
 
-### Events
+  ### Security notes
+  - `revoke()` now transfers vested-but-unclaimed tokens to the beneficiary before returning the unvested portion to the employer. Prior to the SA-02 fix, these tokens were permanently locked (SA-02 fix).
 
-```solidity
-event ScheduleCreated(uint256 indexed id, address employer, address employee, uint256 totalAmount);
-event TokensClaimed(uint256 indexed id, address employee, uint256 amount);
-event ScheduleRevoked(uint256 indexed id, uint256 returnedToEmployer);
-```
+  ### Functions
 
----
+  ```solidity
+  // Employer creates a vesting schedule (must approve token spend first)
+  function createSchedule(
+      address beneficiary,
+      address token,
+      uint256 totalAmount,      // raw 6-decimal units
+      uint256 cliffDuration,    // seconds until cliff
+      uint256 vestingDuration   // seconds of linear vesting after cliff
+  ) external returns (uint256 scheduleId);
 
-## CrosschainEscrow
+  // Beneficiary claims all currently vested tokens
+  function claim(uint256 id) external;
 
-**Address:** [`0x72923f5f69AeD25aaf92779ceF221342dbE7dfDB`](https://testnet.arcscan.app/address/0x72923f5f69AeD25aaf92779ceF221342dbE7dfDB)
+  // Employer revokes:
+  //   - vested-but-unclaimed tokens → sent to beneficiary immediately
+  //   - unvested tokens             → returned to employer
+  function revoke(uint256 id) external;
+  ```
 
-Wraps Circle's `TokenMessengerV2.depositForBurnWithHook()` to attach a condition description to every cross-chain USDC transfer from Arc Testnet.
+  ### Events
 
-### Functions
+  ```solidity
+  event ScheduleCreated(uint256 indexed id, address employer, address beneficiary, uint256 totalAmount);
+  event TokensClaimed(uint256 indexed id, address beneficiary, uint256 amount);
+  event ScheduleRevoked(uint256 indexed id, address employer, uint256 unvestedReturned);
+  ```
 
-```solidity
-// Initiate a CCTP v2 burn-and-transfer (must approve USDC spend first)
-function initiateConditionalTransfer(
-    address recipient,              // recipient on destination chain
-    uint32  destDomain,             // 0=Eth Sepolia, 3=Arb Sepolia, 6=Base Sepolia
-    uint256 amount,                 // raw 6-decimal units
-    uint256 maxFee,                 // 0 = no fee cap
-    uint32  minFinalityThreshold,   // 2000 for Arc "finalized"
-    bytes   calldata hookData,      // optional hook calldata
-    string  calldata conditionDescription
-) external;
-```
+  ---
 
-### Events
+  ## CrosschainEscrow
 
-```solidity
-event ConditionalTransferInitiated(
-    address indexed sender,
-    address indexed recipient,
-    uint32 destDomain,
-    uint256 amount,
-    string conditionDescription
-);
-```
+  **Network:** Arc Testnet  
+  **Address:** [`0x54d8ecd5de6e1ead23a1f00ec8d8acad495f4865`](https://testnet.arcscan.app/address/0x54d8ecd5de6e1ead23a1f00ec8d8acad495f4865)
 
-### Deployment & Redeploy
+  Wraps Circle's `TokenMessengerV2.depositForBurnWithHook()` to attach a condition description to every cross-chain USDC transfer from Arc Testnet.
 
-```bash
-cd contracts
-forge script script/Deploy.s.sol:Deploy \
-  --rpc-url https://rpc.testnet.arc.network \
-  --private-key "$DEPLOYER_PRIVATE_KEY" \
-  --broadcast \
-  --config-path foundry.toml
-```
+  ### Functions
 
-After redeploying, update `CONTRACT_ADDRESSES` in `artifacts/arc-dapp/src/lib/contracts.ts` and `replit.md`.
+  ```solidity
+  // Initiate a CCTP v2 burn-and-transfer (must approve USDC spend first)
+  function initiateConditionalTransfer(
+      address recipient,
+      uint32  destDomain,              // 0=Eth Sepolia, 3=Arb Sepolia, 6=Base Sepolia
+      uint256 amount,                  // raw 6-decimal units
+      uint256 maxFee,                  // 0 = no fee cap
+      uint32  minFinalityThreshold,    // 2000 for Arc finalized
+      bytes   calldata hookData,
+      string  calldata conditionDescription
+  ) external;
+  ```
+
+  ### Events
+
+  ```solidity
+  event ConditionalTransferInitiated(
+      uint256 indexed id,
+      address sender,
+      address recipient,
+      uint32  destDomain,
+      uint256 amount,
+      bytes32 nonce,
+      string  conditionDescription
+  );
+  ```
+
+  ---
+
+  ## TimeLockHook (v6 — self-relay design)
+
+  A destination-chain hook contract that holds CCTP-bridged USDC until an `unlockTimestamp`, then lets the designated recipient `claim()` it.
+
+  ### Addresses
+
+  | Chain | Address |
+  |-------|---------|
+  | Ethereum Sepolia | [`0x22f2ea9050a25da1c24caa76558a65aecc4adf4c`](https://eth-sepolia.blockscout.com/address/0x22f2ea9050a25da1c24caa76558a65aecc4adf4c) |
+  | Arbitrum Sepolia | [`0x0e250b6b417e5b31c7f4bcc8a00352d0672474ad`](https://arbitrum-sepolia.blockscout.com/address/0x0e250b6b417e5b31c7f4bcc8a00352d0672474ad) |
+  | Base Sepolia | *Not deployed — deployer wallet needs Base Sepolia ETH* |
+
+  ### How it works
+
+  1. Relayer calls `relay(message, attestation, finalRecipient, unlockTimestamp)` after CCTP attestation is complete.
+  2. `relay()` internally calls `MessageTransmitterV2.receiveMessage()` — USDC is minted to TimeLockHook.
+  3. A release record is stored: `releaseId → { recipient, amount, unlockTime, claimed }`.
+  4. After `block.timestamp >= unlockTime`, the recipient calls `claim(releaseId)` to receive their USDC.
+
+  ### Security notes
+  - `relay()` rejects `finalRecipient = address(0)` (SA-04 fix).
+  - `emit Released` fires after the transfer, not before (SA-05 fix).
+  - ⚠️ **Testnet only:** `finalRecipient` and `unlockTimestamp` are caller-supplied and not verified against the CCTP `hookData` payload. Production deployments should parse and verify these values from the `BurnMessageV2` hookData.
+
+  ### Functions
+
+  ```solidity
+  // Relayer calls after Circle attests the burn on Arc Testnet
+  function relay(
+      bytes calldata message,
+      bytes calldata attestation,
+      address finalRecipient,    // must not be address(0)
+      uint256 unlockTimestamp
+  ) external returns (bytes32 releaseId);
+
+  // Recipient claims USDC after unlockTimestamp
+  function claim(bytes32 releaseId) external;
+
+  // View pending release
+  function releases(bytes32 releaseId) external view returns (
+      address recipient,
+      uint256 amount,
+      uint256 unlockTime,
+      bool    claimed
+  );
+  ```
+
+  ### Events
+
+  ```solidity
+  event ReleaseScheduled(bytes32 indexed releaseId, address recipient, uint256 amount, uint256 unlockTime);
+  event Released(bytes32 indexed releaseId, address recipient, uint256 amount);
+  ```
+  
