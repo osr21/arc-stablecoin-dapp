@@ -1,0 +1,9 @@
+# Foundry build output — compiled artifacts, ABIs, bytecode
+out/
+
+# Foundry script cache — Forge marks these "Sensitive values saved to cache"
+# and may write signing-related data here in some configurations
+cache/
+
+# Build info (large, reproducible)
+out/build-info/
