@@ -54,9 +54,9 @@ A full-stack DApp on Arc Testnet (Chain ID: 5042002) demonstrating advanced Circ
 
 | Contract | Chain | Address |
 |----------|-------|---------|
-| ConditionalEscrow | Arc Testnet | `0xe64a01283af91a601ebf5a86efe36312783330e8` |
-| PayrollVesting | Arc Testnet | `0xdc14d0a5233173776fc4ea1007251afb174d67e8` |
-| CrosschainEscrow | Arc Testnet | `0x54d8ecd5de6e1ead23a1f00ec8d8acad495f4865` |
+| ConditionalEscrow | Arc Testnet | `0x34733fbbC101F2244Df03508170893013528004e` |
+| PayrollVesting | Arc Testnet | `0x113F24249b0521d7288E52D12AE869d5903E6143` |
+| CrosschainEscrow | Arc Testnet | `0x1e0AaD16aaBFe906987D70A00783E9ab67954aFF` |
 | TimeLockHook v6 | Ethereum Sepolia | `0x22f2ea9050a25da1c24caa76558a65aecc4adf4c` |
 | TimeLockHook v6 | Arbitrum Sepolia | `0x0e250b6b417e5b31c7f4bcc8a00352d0672474ad` |
 | TimeLockHook v6 | Base Sepolia | not deployed — deployer wallet needs Base Sepolia ETH |

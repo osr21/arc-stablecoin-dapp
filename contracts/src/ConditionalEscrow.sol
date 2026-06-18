@@ -125,19 +125,30 @@ contract ConditionalEscrow {
 
     /**
      * @notice Release funds to beneficiary when conditions are met.
-     *         Anyone can call this after releaseTime has passed.
-     *         Only depositor or beneficiary can release before releaseTime.
+     *
+     *         time_based escrows enforce a strict time-lock: nobody — including the
+     *         depositor — can release before releaseTime. This guarantees the
+     *         beneficiary's right to hold the funds for the agreed period.
+     *
+     *         milestone / oracle escrows allow the depositor to release early once
+     *         they have verified off-chain that the condition is satisfied. Anyone
+     *         may release permissionlessly once releaseTime has passed regardless
+     *         of conditionType.
      */
     function release(uint256 id) external inStatus(id, Status.Active) {
         EscrowData storage e = escrows[id];
 
-        // Only the depositor may release early (signalling conditions are met).
-        // Beneficiary CANNOT unilaterally release before time — that would bypass escrow.
-        // Anyone may release permissionlessly once the release time has passed.
-        bool isDepositor  = msg.sender == e.depositor;
-        bool timeExpired  = block.timestamp >= e.releaseTime;
+        bool timeExpired = block.timestamp >= e.releaseTime;
+        bool isTimeBased = keccak256(bytes(e.conditionType)) == keccak256(bytes("time_based"));
 
-        require(isDepositor || timeExpired, "Cannot release yet");
+        if (isTimeBased) {
+            // Strict time-lock: no early release by anyone, including the depositor.
+            require(timeExpired, "Time lock not expired");
+        } else {
+            // Milestone / oracle: depositor signals conditions met, or time passes.
+            bool isDepositor = msg.sender == e.depositor;
+            require(isDepositor || timeExpired, "Cannot release yet");
+        }
 
         e.status = Status.Released;
         IERC20(e.token).transfer(e.beneficiary, e.amount);
