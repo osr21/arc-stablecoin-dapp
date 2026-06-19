@@ -5,7 +5,7 @@ import { eq, and, lt } from "drizzle-orm";
 import { logger } from "./logger";
 
 const ARC_RPC = "https://rpc.testnet.arc.network";
-const CONDITIONAL_ESCROW = "0x34733fbbC101F2244Df03508170893013528004e" as `0x${string}`;
+const CONDITIONAL_ESCROW = "0x935e53ddd824f4fc9321ba94e70161f20c23ad04" as `0x${string}`;
 const INTERVAL_MS = 60_000;
 
 const ARC_CHAIN = {
@@ -59,6 +59,11 @@ async function resolveOnChainId(
   return null;
 }
 
+// Tracks consecutive on-chain failures per escrow DB id.
+// After MAX_FAILURES the keeper stops retrying to avoid burning gas forever.
+const failCounts = new Map<number, number>();
+const MAX_FAILURES = 3;
+
 async function tick(
   publicClient: ReturnType<typeof createPublicClient>,
   walletClient: ReturnType<typeof createWalletClient>,
@@ -75,6 +80,12 @@ async function tick(
   logger.info({ count: expired.length }, "keeper: found expired escrows");
 
   for (const escrow of expired) {
+    const failures = failCounts.get(escrow.id) ?? 0;
+    if (failures >= MAX_FAILURES) {
+      logger.warn({ escrowId: escrow.id, failures }, "keeper: skipping — exceeded max failure attempts");
+      continue;
+    }
+
     try {
       const onChainId = await resolveOnChainId(escrow, publicClient);
 
@@ -108,9 +119,12 @@ async function tick(
         chainId: escrow.chainId,
       });
 
+      failCounts.delete(escrow.id);
       logger.info({ escrowId: escrow.id, tx }, "keeper: escrow auto-released ✓");
     } catch (err) {
-      logger.error({ err, escrowId: escrow.id }, "keeper: failed to auto-release escrow");
+      const next = failures + 1;
+      failCounts.set(escrow.id, next);
+      logger.error({ err, escrowId: escrow.id, failCount: next }, "keeper: failed to auto-release escrow");
     }
   }
 }

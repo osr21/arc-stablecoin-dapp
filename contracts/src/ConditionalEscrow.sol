@@ -41,8 +41,15 @@ contract ConditionalEscrow {
     mapping(uint256 => EscrowData) public escrows;
     uint256 public nextId;
 
+    /// @dev Whitelist of accepted tokens — only USDC and EURC on Arc Testnet.
+    mapping(address => bool) public allowedTokens;
+
     constructor() {
         owner = msg.sender;
+        // Arc Testnet USDC (native gas token wrapped as ERC-20)
+        allowedTokens[0x3600000000000000000000000000000000000000] = true;
+        // Arc Testnet EURC
+        allowedTokens[0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a] = true;
     }
 
     event EscrowCreated(
@@ -96,6 +103,7 @@ contract ConditionalEscrow {
         string calldata conditionType,
         bytes calldata conditionData
     ) external returns (uint256 id) {
+        require(allowedTokens[token], "Token not allowed: use USDC or EURC");
         require(beneficiary != address(0), "Zero beneficiary");
         require(arbiter != address(0), "Zero arbiter");
         require(arbiter != beneficiary, "Arbiter cannot be beneficiary");

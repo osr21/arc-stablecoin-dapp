@@ -50,8 +50,11 @@ app.use(
 // Restrict CORS to known origins — never allow wildcard in production.
 const ALLOWED_ORIGIN_PATTERNS: (string | RegExp)[] = [
   "https://arc-smart-stablecoin-logic.replit.app",
-  // Replit dev-preview domains (worf cluster and generic .replit.dev)
-  /\.replit\.dev$/,
+  // Exact dev domain for this Repl (REPLIT_DEV_DOMAIN is injected by the platform).
+  // Falls back to broad pattern only when env var is absent (local dev).
+  ...(process.env.REPLIT_DEV_DOMAIN
+    ? [`https://${process.env.REPLIT_DEV_DOMAIN}`]
+    : [/\.replit\.dev$/]),
   /\.repl\.co$/,
   // localhost for local development
   /^http:\/\/localhost(:\d+)?$/,

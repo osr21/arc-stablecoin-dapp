@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, crosschainTransfersTable, activityLogTable } from "@workspace/db";
-import { eq, or } from "drizzle-orm";
+import { eq, or, and } from "drizzle-orm";
 import {
   ListCrosschainTransfersQueryParams,
   CreateCrosschainTransferBody,
@@ -167,8 +167,15 @@ router.patch("/:id", async (req, res) => {
       mintTxHash: body.data.mintTxHash ?? existing.mintTxHash,
       updatedAt:  new Date(),
     })
-    .where(eq(crosschainTransfersTable.id, params.data.id))
+    .where(and(
+      eq(crosschainTransfersTable.id, params.data.id),
+      eq(crosschainTransfersTable.status, existing.status),
+    ))
     .returning();
+
+  if (!updated) {
+    return res.status(409).json({ error: "Status changed concurrently — please retry" });
+  }
 
   if (body.data.status === "complete") {
     await db.insert(activityLogTable).values({

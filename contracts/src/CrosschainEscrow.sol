@@ -119,6 +119,7 @@ contract CrosschainEscrow {
     ) external returns (uint256 id) {
         require(recipient != address(0), "Zero recipient");
         require(amount > 0, "Zero amount");
+        require(amount > maxFee, "Amount must exceed maxFee");
 
         IERC20(usdc).transferFrom(msg.sender, address(this), amount);
         IERC20(usdc).approve(tokenMessengerV2, amount);

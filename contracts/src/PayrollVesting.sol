@@ -86,6 +86,8 @@ contract PayrollVesting {
         require(totalAmount > 0, "Zero amount");
         require(vestingDuration > 0, "Zero vesting duration");
         require(cliffDuration <= vestingDuration, "Cliff exceeds vesting");
+        // startTime = 0 would make elapsed ≈ 1.7 billion seconds → instantly fully vested.
+        require(startTime > 0, "Zero startTime");
 
         IERC20(token).transferFrom(msg.sender, address(this), totalAmount);
 
