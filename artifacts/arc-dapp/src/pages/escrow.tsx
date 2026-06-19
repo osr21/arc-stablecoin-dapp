@@ -62,21 +62,24 @@ function formatCountdown(secs: number): string {
 interface EscrowActionCellProps {
   escrow: { id: number; status: string; conditionType: string | null; releaseTime: number; onChainId: number | null; txHash: string; contractAddress: string };
   isConnected: boolean;
+  walletReady: boolean;
   txPending: boolean;
   onRelease: (id: number, onChainId: number | null | undefined, contractAddress: string) => void;
 }
 
-function EscrowActionCell({ escrow, isConnected, txPending, onRelease }: EscrowActionCellProps) {
+function EscrowActionCell({ escrow, isConnected, walletReady, txPending, onRelease }: EscrowActionCellProps) {
   const isTimeBased = escrow.conditionType === "time_based";
   const secsLeft    = useSecondsRemaining(escrow.releaseTime);
   const expired     = secsLeft <= 0;
   const autoFired   = useRef(false);
 
   useEffect(() => {
-    if (escrow.status !== "active" || !isTimeBased || !expired || !isConnected || autoFired.current) return;
+    // Only fire when wallet is fully ready — walletClient may lag behind isConnected.
+    // Do NOT set autoFired before confirming walletReady so we get a retry once it's set.
+    if (!expired || escrow.status !== "active" || !isTimeBased || !walletReady || autoFired.current) return;
     autoFired.current = true;
     onRelease(escrow.id, escrow.onChainId, escrow.contractAddress);
-  }, [expired, escrow.status, isTimeBased, isConnected]);
+  }, [expired, escrow.status, isTimeBased, walletReady]);
 
   return (
     <div className="flex items-center justify-end gap-2 flex-wrap">
@@ -342,6 +345,7 @@ export default function Escrow() {
                   <EscrowActionCell
                     escrow={escrow as any}
                     isConnected={isConnected}
+                    walletReady={isConnected && !!walletClient}
                     txPending={txPending}
                     onRelease={handleRelease}
                   />

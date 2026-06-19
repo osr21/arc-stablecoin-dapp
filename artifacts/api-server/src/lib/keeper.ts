@@ -59,9 +59,12 @@ async function resolveOnChainId(
 }
 
 // Tracks consecutive on-chain failures per escrow DB id.
-// After MAX_FAILURES the keeper stops retrying to avoid burning gas forever.
-const failCounts = new Map<number, number>();
-const MAX_FAILURES = 3;
+// After MAX_FAILURES consecutive failures the keeper enters a 10-minute backoff
+// before retrying — prevents infinite gas burn while recovering from transient errors.
+interface FailInfo { count: number; lastFailAt: number }
+const failCounts = new Map<number, FailInfo>();
+const MAX_FAILURES  = 3;
+const BACKOFF_MS    = 10 * 60 * 1000; // 10 minutes
 
 async function tick(
   publicClient: ReturnType<typeof createPublicClient>,
@@ -79,10 +82,17 @@ async function tick(
   logger.info({ count: expired.length }, "keeper: found expired escrows");
 
   for (const escrow of expired) {
-    const failures = failCounts.get(escrow.id) ?? 0;
-    if (failures >= MAX_FAILURES) {
-      logger.warn({ escrowId: escrow.id, failures }, "keeper: skipping — exceeded max failure attempts");
-      continue;
+    const failInfo = failCounts.get(escrow.id);
+    if (failInfo && failInfo.count >= MAX_FAILURES) {
+      const elapsed = Date.now() - failInfo.lastFailAt;
+      if (elapsed < BACKOFF_MS) {
+        const retryInSecs = Math.ceil((BACKOFF_MS - elapsed) / 1000);
+        logger.warn({ escrowId: escrow.id, failCount: failInfo.count, retryInSecs }, "keeper: in backoff — will retry soon");
+        continue;
+      }
+      // Backoff expired — reset and give it another chance.
+      logger.info({ escrowId: escrow.id }, "keeper: backoff expired — retrying auto-release");
+      failCounts.delete(escrow.id);
     }
 
     try {
@@ -127,9 +137,10 @@ async function tick(
       failCounts.delete(escrow.id);
       logger.info({ escrowId: escrow.id, tx }, "keeper: escrow auto-released ✓");
     } catch (err) {
-      const next = failures + 1;
-      failCounts.set(escrow.id, next);
-      logger.error({ err, escrowId: escrow.id, failCount: next }, "keeper: failed to auto-release escrow");
+      const prev  = failCounts.get(escrow.id);
+      const next  = (prev?.count ?? 0) + 1;
+      failCounts.set(escrow.id, { count: next, lastFailAt: Date.now() });
+      logger.error({ err, escrowId: escrow.id, failCount: next, backoffMins: next >= MAX_FAILURES ? 10 : 0 }, "keeper: failed to auto-release escrow");
     }
   }
 }
