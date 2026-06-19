@@ -247,6 +247,9 @@ function ReceiveDialog({
           ...gasBump,
         });
         const receipt = await pc.waitForTransactionReceipt({ hash });
+        if (receipt.status !== "success") {
+          throw new Error("TimeLock relay transaction reverted on-chain.");
+        }
 
         // Parse the ReleaseScheduled event to capture the on-chain releaseId.
         // releaseId is nonce-based (not pre-computable), so we read it from the event.
@@ -270,7 +273,10 @@ function ReceiveDialog({
           chain: destViemChain as any,
           ...gasBump,
         });
-        await pc.waitForTransactionReceipt({ hash });
+        const relayReceipt = await pc.waitForTransactionReceipt({ hash });
+        if (relayReceipt.status !== "success") {
+          throw new Error("CCTP relay transaction reverted on-chain.");
+        }
         setClaimTx(hash);
         updateStatus.mutate({ id: transferId, data: { status: "complete", mintTxHash: hash, caller: walletAddress } as any });
       }

@@ -115,6 +115,9 @@ export default function Vesting() {
         chain: ARC_TESTNET as any,
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash: tx });
+      if (receipt.status !== "success") {
+        throw new Error("Claim transaction reverted on-chain — nothing may be vested yet.");
+      }
       claimVesting.mutate({ id: dbId, data: { txHash: tx, amountClaimed: "0", caller: address } as any });
     } catch (err: any) {
       alert(`Claim failed: ${err.shortMessage || err.message}`);

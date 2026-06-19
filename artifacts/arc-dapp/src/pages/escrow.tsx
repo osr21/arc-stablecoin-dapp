@@ -89,7 +89,8 @@ export default function Escrow() {
         account: address,
         chain: ARC_TESTNET as any,
       });
-      await publicClient.waitForTransactionReceipt({ hash: approveTx });
+      const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveTx });
+      if (approveReceipt.status !== "success") throw new Error("Token approval transaction reverted.");
 
       // 2. Create escrow on-chain
       const createTx = await walletClient.writeContract({
@@ -149,7 +150,10 @@ export default function Escrow() {
         account: address,
         chain: ARC_TESTNET as any,
       });
-      await publicClient.waitForTransactionReceipt({ hash: tx });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: tx });
+      if (receipt.status !== "success") {
+        throw new Error("Transaction reverted on-chain — the time lock may not have expired yet.");
+      }
       releaseEscrow.mutate({ id, data: { txHash: tx, resolution: "beneficiary", caller: address } as any });
     } catch (err: any) {
       alert(`Release failed: ${err.shortMessage || err.message}`);
