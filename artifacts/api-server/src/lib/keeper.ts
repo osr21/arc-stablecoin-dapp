@@ -5,7 +5,6 @@ import { eq, and, lt } from "drizzle-orm";
 import { logger } from "./logger";
 
 const ARC_RPC = "https://rpc.testnet.arc.network";
-const CONDITIONAL_ESCROW = "0x935e53ddd824f4fc9321ba94e70161f20c23ad04" as `0x${string}`;
 const INTERVAL_MS = 60_000;
 
 const ARC_CHAIN = {
@@ -94,10 +93,16 @@ async function tick(
         continue;
       }
 
-      logger.info({ escrowId: escrow.id, onChainId: onChainId.toString() }, "keeper: calling autoRelease");
+      const contractAddr = escrow.contractAddress as `0x${string}`;
+      if (!contractAddr || !/^0x[0-9a-fA-F]{40}$/.test(contractAddr)) {
+        logger.warn({ escrowId: escrow.id, contractAddr }, "keeper: invalid contractAddress — skipping");
+        continue;
+      }
+
+      logger.info({ escrowId: escrow.id, onChainId: onChainId.toString(), contractAddr }, "keeper: calling autoRelease");
 
       const tx = await walletClient.writeContract({
-        address: CONDITIONAL_ESCROW,
+        address: contractAddr,
         abi: ESCROW_ABI,
         functionName: "autoRelease",
         args: [onChainId],

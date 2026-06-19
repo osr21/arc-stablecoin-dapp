@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useListEscrows, useCreateEscrow, useDisputeEscrow, useReleaseEscrow, getListEscrowsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -35,6 +35,82 @@ function statusVariant(status: string) {
   if (status === "active")   return "default";
   if (status === "released" || status === "resolved") return "secondary";
   return "destructive";
+}
+
+function useSecondsRemaining(releaseTime: number): number {
+  const [secs, setSecs] = useState(() => releaseTime - Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const tick = () => setSecs(releaseTime - Math.floor(Date.now() / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [releaseTime]);
+  return secs;
+}
+
+function formatCountdown(secs: number): string {
+  if (secs <= 0) return "00:00:00";
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (d > 0) return `${d}d ${pad(h)}h ${pad(m)}m`;
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
+
+interface EscrowActionCellProps {
+  escrow: { id: number; status: string; conditionType: string | null; releaseTime: number; onChainId: number | null; txHash: string; contractAddress: string };
+  isConnected: boolean;
+  txPending: boolean;
+  onRelease: (id: number, onChainId: number | null | undefined, contractAddress: string) => void;
+}
+
+function EscrowActionCell({ escrow, isConnected, txPending, onRelease }: EscrowActionCellProps) {
+  const isTimeBased = escrow.conditionType === "time_based";
+  const secsLeft    = useSecondsRemaining(escrow.releaseTime);
+  const expired     = secsLeft <= 0;
+  const autoFired   = useRef(false);
+
+  useEffect(() => {
+    if (escrow.status !== "active" || !isTimeBased || !expired || !isConnected || autoFired.current) return;
+    autoFired.current = true;
+    onRelease(escrow.id, escrow.onChainId, escrow.contractAddress);
+  }, [expired, escrow.status, isTimeBased, isConnected]);
+
+  return (
+    <div className="flex items-center justify-end gap-2 flex-wrap">
+      {escrow.status === "active" && isTimeBased && !expired && (
+        <span className="font-mono text-xs tabular-nums text-muted-foreground border border-border rounded px-2 py-0.5 min-w-[80px] text-center">
+          ⏱ {formatCountdown(secsLeft)}
+        </span>
+      )}
+
+      {escrow.status === "active" && isTimeBased && expired && (
+        <span className="text-xs text-amber-500 animate-pulse font-medium">
+          Auto-releasing…
+        </span>
+      )}
+
+      {escrow.status === "active" && !isTimeBased && isConnected && (
+        <Button variant="outline" size="sm" onClick={() => onRelease(escrow.id, escrow.onChainId, escrow.contractAddress)} disabled={txPending}>
+          Release
+        </Button>
+      )}
+
+      {escrow.status === "active" && isTimeBased && expired && isConnected && (
+        <Button variant="outline" size="sm" onClick={() => onRelease(escrow.id, escrow.onChainId, escrow.contractAddress)} disabled={txPending}>
+          Release Now
+        </Button>
+      )}
+
+      {escrow.txHash && (
+        <a href={`https://testnet.arcscan.app/tx/${escrow.txHash}`} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline">
+          TxScan ↗
+        </a>
+      )}
+    </div>
+  );
 }
 
 export default function Escrow() {
@@ -136,14 +212,16 @@ export default function Escrow() {
     }
   };
 
-  const handleRelease = async (id: number, onChainId?: number | null) => {
+  const handleRelease = async (id: number, onChainId?: number | null, contractAddress?: string) => {
     if (!address || !walletClient) return;
     if (isWrongNetwork) { await switchToArc(); return; }
     setTxPending(true);
+    // Use the per-escrow contract address stored in DB; fall back to the current deployment.
+    const escrowContract = (contractAddress ?? CONTRACT_ADDRESSES.CONDITIONAL_ESCROW) as `0x${string}`;
     try {
       const contractId = onChainId != null ? BigInt(onChainId) : BigInt(id - 1);
       const tx = await walletClient.writeContract({
-        address: CONTRACT_ADDRESSES.CONDITIONAL_ESCROW,
+        address: escrowContract,
         abi: CONDITIONAL_ESCROW_ABI,
         functionName: "release",
         args: [contractId],
@@ -260,17 +338,13 @@ export default function Escrow() {
                 <TableCell className="font-mono text-xs" title={escrow.beneficiary}>
                   {escrow.beneficiary.slice(0,6)}...{escrow.beneficiary.slice(-4)}
                 </TableCell>
-                <TableCell className="text-right space-x-2">
-                  {escrow.status === "active" && isConnected && (
-                    <Button variant="outline" size="sm" onClick={() => handleRelease(escrow.id, escrow.onChainId)} disabled={txPending}>
-                      Release
-                    </Button>
-                  )}
-                  {escrow.txHash && (
-                    <a href={`https://testnet.arcscan.app/tx/${escrow.txHash}`} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline ml-2">
-                      TxScan ↗
-                    </a>
-                  )}
+                <TableCell className="text-right">
+                  <EscrowActionCell
+                    escrow={escrow as any}
+                    isConnected={isConnected}
+                    txPending={txPending}
+                    onRelease={handleRelease}
+                  />
                 </TableCell>
               </TableRow>
             ))}
