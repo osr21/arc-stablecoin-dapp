@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, ShieldCheck, Clock, ArrowLeftRight, FileCode2, LayoutDashboard, Wallet, Component, AlertTriangle } from "lucide-react";
+import { Activity, ShieldCheck, Clock, ArrowLeftRight, FileCode2, LayoutDashboard, Wallet, Component, AlertTriangle, Puzzle } from "lucide-react";
 import { useWallet } from "../lib/wallet";
 import { Button } from "./ui/button";
 
@@ -10,6 +10,7 @@ const navItems = [
   { href: "/crosschain", label: "Cross-chain", icon: ArrowLeftRight },
   { href: "/contracts", label: "Contracts", icon: FileCode2 },
   { href: "/architecture", label: "Architecture", icon: Component },
+  { href: "/integrations", label: "Integrations", icon: Puzzle },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {

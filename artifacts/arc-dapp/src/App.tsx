@@ -10,6 +10,7 @@ import Vesting from "./pages/vesting";
 import Crosschain from "./pages/crosschain";
 import Contracts from "./pages/contracts";
 import Architecture from "./pages/architecture";
+import Integrations from "./pages/integrations";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ function Router() {
         <Route path="/crosschain" component={Crosschain} />
         <Route path="/contracts" component={Contracts} />
         <Route path="/architecture" component={Architecture} />
+        <Route path="/integrations" component={Integrations} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

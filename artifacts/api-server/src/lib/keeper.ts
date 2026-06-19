@@ -66,6 +66,25 @@ const failCounts = new Map<number, FailInfo>();
 const MAX_FAILURES  = 3;
 const BACKOFF_MS    = 10 * 60 * 1000; // 10 minutes
 
+// ─── Live status (read by /api/keeper/status) ─────────────────────────────────
+const state = {
+  running:            false,
+  keeperAddress:      null as string | null,
+  lastTickAt:         null as string | null,
+  successfulReleases: 0,
+};
+
+export function getKeeperStatus() {
+  const inBackoff: { escrowId: number; retryInSecs: number }[] = [];
+  for (const [escrowId, info] of failCounts) {
+    if (info.count >= MAX_FAILURES) {
+      const remaining = BACKOFF_MS - (Date.now() - info.lastFailAt);
+      if (remaining > 0) inBackoff.push({ escrowId, retryInSecs: Math.ceil(remaining / 1000) });
+    }
+  }
+  return { ...state, inBackoff };
+}
+
 async function tick(
   publicClient: ReturnType<typeof createPublicClient>,
   walletClient: ReturnType<typeof createWalletClient>,
@@ -135,6 +154,7 @@ async function tick(
       });
 
       failCounts.delete(escrow.id);
+      state.successfulReleases += 1;
       logger.info({ escrowId: escrow.id, tx }, "keeper: escrow auto-released ✓");
     } catch (err) {
       const prev  = failCounts.get(escrow.id);
@@ -160,7 +180,13 @@ export function startKeeper(): void {
 
   logger.info({ address: account.address }, "keeper: auto-release keeper started");
 
-  const run = () => tick(publicClient, walletClient).catch((err) => logger.error({ err }, "keeper: tick error"));
+  state.running       = true;
+  state.keeperAddress = account.address;
+
+  const run = () => {
+    state.lastTickAt = new Date().toISOString();
+    return tick(publicClient, walletClient).catch((err) => logger.error({ err }, "keeper: tick error"));
+  };
 
   run();
   setInterval(run, INTERVAL_MS);

@@ -5,6 +5,7 @@ import vestingRouter from "./vesting";
 import crosschainRouter from "./crosschain";
 import cctpRouter from "./cctp";
 import dashboardRouter from "./dashboard";
+import keeperRouter from "./keeper";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use("/vesting", vestingRouter);
 router.use("/crosschain", crosschainRouter);
 router.use("/cctp", cctpRouter);
 router.use("/dashboard", dashboardRouter);
+router.use("/keeper", keeperRouter);
 
 export default router;
