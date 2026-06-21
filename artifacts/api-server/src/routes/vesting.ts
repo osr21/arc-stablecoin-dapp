@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, vestingSchedulesTable, activityLogTable } from "@workspace/db";
-import { eq, or } from "drizzle-orm";
+import { eq, or, and } from "drizzle-orm";
 import {
   ListVestingSchedulesQueryParams,
   CreateVestingScheduleBody,
@@ -20,6 +20,7 @@ router.get("/", async (req, res) => {
     return res.status(400).json({ error: "Invalid query params" });
   }
 
+  const PAGE_LIMIT = 500;
   let rows;
   if (query.data.address) {
     rows = await db
@@ -30,14 +31,16 @@ router.get("/", async (req, res) => {
           eq(vestingSchedulesTable.employer, query.data.address),
           eq(vestingSchedulesTable.beneficiary, query.data.address)
         )
-      );
+      )
+      .limit(PAGE_LIMIT);
   } else if (query.data.token) {
     rows = await db
       .select()
       .from(vestingSchedulesTable)
-      .where(eq(vestingSchedulesTable.token, query.data.token));
+      .where(eq(vestingSchedulesTable.token, query.data.token))
+      .limit(PAGE_LIMIT);
   } else {
-    rows = await db.select().from(vestingSchedulesTable);
+    rows = await db.select().from(vestingSchedulesTable).limit(PAGE_LIMIT);
   }
 
   return res.json(
@@ -52,7 +55,7 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   const body = CreateVestingScheduleBody.safeParse(req.body);
   if (!body.success) {
-    return res.status(400).json({ error: "Invalid body", details: body.error.issues });
+    return res.status(400).json({ error: "Invalid body" });
   }
 
   if (!TX_HASH_RE.test(body.data.txHash)) {
@@ -172,14 +175,24 @@ router.post("/:id/claim", async (req, res) => {
     });
   }
 
+  // Optimistic lock: the WHERE includes the current amountClaimed value.
+  // If a concurrent request already updated it, this UPDATE matches 0 rows and
+  // we return 409 rather than silently overwriting.
   const [schedule] = await db
     .update(vestingSchedulesTable)
     .set({
       amountClaimed: body.data.amountClaimed,
       claimTxHash:   body.data.txHash,
     })
-    .where(eq(vestingSchedulesTable.id, params.data.id))
+    .where(and(
+      eq(vestingSchedulesTable.id, params.data.id),
+      eq(vestingSchedulesTable.amountClaimed, existing.amountClaimed),
+    ))
     .returning();
+
+  if (!schedule) {
+    return res.status(409).json({ error: "Concurrent claim detected — please retry" });
+  }
 
   await db.insert(activityLogTable).values({
     type:        "vesting_claimed",

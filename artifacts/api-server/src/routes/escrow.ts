@@ -22,6 +22,7 @@ router.get("/", async (req, res) => {
     return res.status(400).json({ error: "Invalid query params" });
   }
 
+  const PAGE_LIMIT = 500;
   let rows;
   if (query.data.address) {
     rows = await db
@@ -32,14 +33,16 @@ router.get("/", async (req, res) => {
           eq(escrowsTable.depositor, query.data.address),
           eq(escrowsTable.beneficiary, query.data.address)
         )
-      );
+      )
+      .limit(PAGE_LIMIT);
   } else if (query.data.status) {
     rows = await db
       .select()
       .from(escrowsTable)
-      .where(eq(escrowsTable.status, query.data.status));
+      .where(eq(escrowsTable.status, query.data.status))
+      .limit(PAGE_LIMIT);
   } else {
-    rows = await db.select().from(escrowsTable);
+    rows = await db.select().from(escrowsTable).limit(PAGE_LIMIT);
   }
 
   return res.json(
@@ -54,7 +57,7 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   const body = CreateEscrowBody.safeParse(req.body);
   if (!body.success) {
-    return res.status(400).json({ error: "Invalid body", details: body.error.issues });
+    return res.status(400).json({ error: "Invalid body" });
   }
 
   if (!TX_HASH_RE.test(body.data.txHash)) {

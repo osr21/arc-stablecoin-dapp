@@ -159,3 +159,7 @@ overrides:
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
   esbuild: "0.28.1"
   qs: "6.15.2"
+  # Security: pin vulnerable transitive deps to patched versions
+  js-yaml: ">=4.2.0"      # GHSA-h67p-54hq-rp68 — quadratic DoS via YAML merge aliases
+  markdown-it: ">=14.2.0" # GHSA-6v5v-wf23-fmfq — quadratic DoS via smartquotes
+  "@babel/core": ">=7.29.6" # GHSA-4x5r-pxfx-6jf8 — arbitrary file read via sourceMappingURL

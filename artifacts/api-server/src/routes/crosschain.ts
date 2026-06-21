@@ -27,6 +27,7 @@ router.get("/", async (req, res) => {
     return res.status(400).json({ error: "Invalid query params" });
   }
 
+  const PAGE_LIMIT = 500;
   let rows;
   if (query.data.address) {
     rows = await db
@@ -37,14 +38,16 @@ router.get("/", async (req, res) => {
           eq(crosschainTransfersTable.sender, query.data.address),
           eq(crosschainTransfersTable.recipient, query.data.address)
         )
-      );
+      )
+      .limit(PAGE_LIMIT);
   } else if (query.data.status) {
     rows = await db
       .select()
       .from(crosschainTransfersTable)
-      .where(eq(crosschainTransfersTable.status, query.data.status));
+      .where(eq(crosschainTransfersTable.status, query.data.status))
+      .limit(PAGE_LIMIT);
   } else {
-    rows = await db.select().from(crosschainTransfersTable);
+    rows = await db.select().from(crosschainTransfersTable).limit(PAGE_LIMIT);
   }
 
   return res.json(
@@ -59,7 +62,7 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   const body = CreateCrosschainTransferBody.safeParse(req.body);
   if (!body.success) {
-    return res.status(400).json({ error: "Invalid body", details: body.error.issues });
+    return res.status(400).json({ error: "Invalid body" });
   }
 
   if (!TX_HASH_RE.test(body.data.burnTxHash)) {
@@ -130,7 +133,7 @@ router.patch("/:id", async (req, res) => {
   if (!params.success) return res.status(400).json({ error: "Invalid id" });
 
   const body = UpdateCrosschainTransferStatusBody.safeParse(req.body);
-  if (!body.success) return res.status(400).json({ error: "Invalid body", details: body.error.issues });
+  if (!body.success) return res.status(400).json({ error: "Invalid body" });
 
   // Caller must identify as the original sender — prevents IDOR from arbitrary clients.
   const caller = typeof req.body.caller === "string" ? req.body.caller.toLowerCase() : null;

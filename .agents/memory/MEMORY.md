@@ -1,7 +1,1 @@
-- [Arc Testnet Deployed Contracts](arc-deployed-contracts.md) — live contract addresses on Arc Testnet (Chain ID 5042002), deployed via Foundry
-- [API Security Hardening](api-security-hardening.md) — status-transition guards, txHash format validation, rate limiting, body size limits applied to all mutation routes
-- [Arc Testnet CCTP v2 correct config](arc-testnet-cctp.md) — domain 26, real TokenMessengerV2/Transmitter addresses, threshold 2000; standard CREATE2 addresses have no code on Arc
-- [CCTP v2 no return values](cctp-v2-no-return-values.md) — depositForBurn/depositForBurnWithHook return nothing in CCTP v2; declaring returns(uint64) causes raw 0x revert after all sub-calls succeed
-- [CCTP v2 receive flow + arc-relay-bridge](cctp-v2-receive-flow.md) — use bridge `/api/attest?domain=26&txHash=` not Circle IRIS (Arc not supported); bridge `/api/relay` for gas-free mint (1 USDC fee)
-- [Full security audit findings + fixes](security-audit-2025.md) — CORS allowlist, IDOR caller-field pattern on all write routes, SQL aggregation for dashboard stats, esbuild 0.28.1 + qs 6.15.2.
-- [TimeLockHook v6 — CCTP v2 self-relay design](timelock-hook-deployment.md) — Circle NEVER calls handleReceiveMessage automatically; v6 makes hook the relay entrypoint (TimeLockHook.relay() calls receiveMessage internally); releaseId from ReleaseScheduled event.
+- [PayrollVesting token whitelist](payvest-whitelist.md) — contract needs redeployment after whitelist fix; on-chain address in replit.md is stale until then

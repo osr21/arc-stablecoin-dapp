@@ -1,5 +1,6 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import pinoHttp from "pino-http";
 import router from "./routes";
@@ -10,6 +11,10 @@ const app: Express = express();
 // Replit proxy sets X-Forwarded-For — trust the first hop so rate-limit
 // uses the real client IP instead of the proxy IP.
 app.set("trust proxy", 1);
+
+// Security headers — removes X-Powered-By, sets X-Content-Type-Options, X-Frame-Options,
+// Referrer-Policy, HSTS, etc. CSP disabled: this is a pure JSON API, not an HTML server.
+app.use(helmet({ contentSecurityPolicy: false }));
 
 const limiter = rateLimit({
   windowMs: 60_000,
@@ -88,5 +93,12 @@ app.use("/api/vesting", strictLimiter);
 app.use("/api/crosschain", strictLimiter);
 
 app.use("/api", router);
+
+// Global error handler — catches any unhandled async rejection from route handlers.
+// Must have four parameters so Express recognises it as an error handler.
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  req.log.error({ err }, "Unhandled error");
+  res.status(500).json({ error: "Internal server error" });
+});
 
 export default app;
