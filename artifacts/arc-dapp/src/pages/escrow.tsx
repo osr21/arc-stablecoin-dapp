@@ -258,19 +258,27 @@ interface EscrowActionCellProps {
   onOracleCheck: (escrow: EscrowRow) => void;
 }
 
+// Buffer between client-side countdown expiry and on-chain release attempt.
+// Arc blocks may lag the browser clock by several seconds; without this buffer
+// the release() call reverts because block.timestamp < releaseTime.
+const RELEASE_BUFFER_SECS = 30;
+
 function EscrowActionCell({ escrow, isConnected, walletReady, txPending, onRelease, onOracleCheck }: EscrowActionCellProps) {
   const isTimeBased = escrow.conditionType === "time_based";
   const isOracle    = escrow.conditionType === "oracle";
   const isMilestone = escrow.conditionType === "milestone";
   const secsLeft    = useSecondsRemaining(escrow.releaseTime);
   const expired     = secsLeft <= 0;
+  // Only attempt release once we are at least RELEASE_BUFFER_SECS past expiry.
+  const canRelease  = secsLeft <= -RELEASE_BUFFER_SECS;
+  const bufferLeft  = expired && !canRelease ? RELEASE_BUFFER_SECS + secsLeft : 0;
   const autoFired   = useRef(false);
 
   useEffect(() => {
-    if (!expired || escrow.status !== "active" || !isTimeBased || !walletReady || autoFired.current) return;
+    if (!canRelease || escrow.status !== "active" || !isTimeBased || !walletReady || autoFired.current) return;
     autoFired.current = true;
     onRelease(escrow.id, escrow.onChainId, escrow.contractAddress);
-  }, [expired, escrow.status, isTimeBased, walletReady]);
+  }, [canRelease, escrow.status, isTimeBased, walletReady]);
 
   return (
     <div className="flex items-center justify-end gap-2 flex-wrap">
@@ -279,10 +287,15 @@ function EscrowActionCell({ escrow, isConnected, walletReady, txPending, onRelea
           ⏱ {formatCountdown(secsLeft)}
         </span>
       )}
-      {escrow.status === "active" && isTimeBased && expired && (
+      {escrow.status === "active" && isTimeBased && expired && !canRelease && (
+        <span className="font-mono text-xs text-muted-foreground border border-border rounded px-2 py-0.5 min-w-[80px] text-center animate-pulse">
+          ⛓ {bufferLeft}s
+        </span>
+      )}
+      {escrow.status === "active" && isTimeBased && canRelease && (
         <span className="text-xs text-amber-500 animate-pulse font-medium">Auto-releasing…</span>
       )}
-      {escrow.status === "active" && isTimeBased && expired && isConnected && (
+      {escrow.status === "active" && isTimeBased && canRelease && isConnected && (
         <Button variant="outline" size="sm" onClick={() => onRelease(escrow.id, escrow.onChainId, escrow.contractAddress)} disabled={txPending}>
           Release Now
         </Button>
@@ -483,7 +496,7 @@ export default function Escrow() {
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash: tx });
       if (receipt.status !== "success") {
-        throw new Error("Transaction reverted on-chain — the time lock may not have expired yet.");
+        throw new Error("Transaction reverted — the time lock may still be finalizing on-chain. Wait a moment and try again.");
       }
       releaseEscrow.mutate({ id, data: { txHash: tx, resolution: "beneficiary", caller: address } as any });
     } catch (err: any) {
@@ -693,8 +706,8 @@ export default function Escrow() {
                 <TableCell>
                   <Badge variant={statusVariant(escrow.status) as any}>{escrow.status}</Badge>
                 </TableCell>
-                <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate" title={formatConditionCell(escrow.conditionType, escrow.conditionData ?? null)}>
-                  {formatConditionCell(escrow.conditionType, escrow.conditionData ?? null)}
+                <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate" title={formatConditionCell(escrow.conditionType ?? null, escrow.conditionData ?? null)}>
+                  {formatConditionCell(escrow.conditionType ?? null, escrow.conditionData ?? null)}
                 </TableCell>
                 <TableCell className="font-mono text-xs" title={escrow.beneficiary}>
                   {escrow.beneficiary.slice(0,6)}…{escrow.beneficiary.slice(-4)}
