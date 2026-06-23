@@ -7,6 +7,12 @@ import { logger } from "./logger";
 const ARC_RPC = "https://rpc.testnet.arc.network";
 const INTERVAL_MS = 60_000;
 
+// Allowlist of contract addresses the keeper is permitted to call autoRelease() on.
+// Must use lowercase for comparison — Ethereum addresses are case-insensitive.
+const ALLOWED_CONTRACTS = new Set([
+  "0x935e53ddd824f4fc9321ba94e70161f20c23ad04", // ConditionalEscrow — Arc Testnet
+]);
+
 const ARC_CHAIN = {
   id: 5042002,
   name: "Arc Testnet",
@@ -125,6 +131,14 @@ async function tick(
       const contractAddr = escrow.contractAddress as `0x${string}`;
       if (!contractAddr || !/^0x[0-9a-fA-F]{40}$/.test(contractAddr)) {
         logger.warn({ escrowId: escrow.id, contractAddr }, "keeper: invalid contractAddress — skipping");
+        continue;
+      }
+
+      // Allowlist: only call the known deployed ConditionalEscrow contract.
+      // Without this, any user could POST an escrow pointing to a malicious contract
+      // and force the keeper wallet to call arbitrary code.
+      if (!ALLOWED_CONTRACTS.has(contractAddr.toLowerCase())) {
+        logger.warn({ escrowId: escrow.id, contractAddr }, "keeper: contract not on allowlist — skipping");
         continue;
       }
 

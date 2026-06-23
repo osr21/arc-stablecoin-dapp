@@ -62,7 +62,7 @@ catalog:
   tailwind-merge: ^3.3.1
   tailwindcss: ^4.1.14
   tsx: ^4.21.0
-  vite: ^7.3.2
+  vite: ^7.3.5
   wouter: ^3.3.5
   zod: ^3.25.76
 
@@ -163,3 +163,4 @@ overrides:
   js-yaml: ">=4.2.0"      # GHSA-h67p-54hq-rp68 — quadratic DoS via YAML merge aliases
   markdown-it: ">=14.2.0" # GHSA-6v5v-wf23-fmfq — quadratic DoS via smartquotes
   "@babel/core": ">=7.29.6" # GHSA-4x5r-pxfx-6jf8 — arbitrary file read via sourceMappingURL
+  ws: ">=8.21.0"           # CVE — memory exhaustion DoS via tiny fragments (production dep via viem)

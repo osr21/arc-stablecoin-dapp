@@ -14,7 +14,7 @@ export const escrowsTable = pgTable("escrows", {
   conditionType: text("condition_type"),
   conditionData: text("condition_data"),
   contractAddress: text("contract_address").notNull(),
-  txHash: text("tx_hash").notNull(),
+  txHash: text("tx_hash").notNull().unique(),
   disputeTxHash: text("dispute_tx_hash"),
   releaseTxHash: text("release_tx_hash"),
   disputeReason: text("dispute_reason"),

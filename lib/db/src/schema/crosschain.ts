@@ -11,7 +11,7 @@ export const crosschainTransfersTable = pgTable("crosschain_transfers", {
   token: text("token").notNull(),
   amount: text("amount").notNull(),
   status: text("status").notNull().default("pending"),
-  burnTxHash: text("burn_tx_hash").notNull(),
+  burnTxHash: text("burn_tx_hash").notNull().unique(),
   mintTxHash: text("mint_tx_hash"),
   messageHash: text("message_hash"),
   attestation: text("attestation"),

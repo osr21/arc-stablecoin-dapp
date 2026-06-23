@@ -33,7 +33,10 @@ async function fetchBridgeAttestation(txHash: string): Promise<BridgeMessage | n
     signal:  AbortSignal.timeout(10_000),
   });
   if (!res.ok) return null;
-  const data = (await res.json()) as { messages?: BridgeMessage[] };
+  // Cap response body to 64 KB to prevent unbounded memory usage if the bridge misbehaves.
+  const text = await res.text();
+  if (text.length > 65_536) return null;
+  const data = JSON.parse(text) as { messages?: BridgeMessage[] };
   const msg = data.messages?.[0];
   if (!msg) return null;
   return msg;

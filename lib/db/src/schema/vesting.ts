@@ -14,7 +14,7 @@ export const vestingSchedulesTable = pgTable("vesting_schedules", {
   amountClaimed: text("amount_claimed").notNull().default("0"),
   claimTxHash: text("claim_tx_hash"),
   contractAddress: text("contract_address").notNull(),
-  txHash: text("tx_hash").notNull(),
+  txHash: text("tx_hash").notNull().unique(),
   chainId: integer("chain_id").notNull().default(5042002),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
