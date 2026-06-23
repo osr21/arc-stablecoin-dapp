@@ -10,7 +10,7 @@ const INTERVAL_MS = 60_000;
 // Allowlist of contract addresses the keeper is permitted to call autoRelease() on.
 // Must use lowercase for comparison — Ethereum addresses are case-insensitive.
 const ALLOWED_CONTRACTS = new Set([
-  "0x935e53ddd824f4fc9321ba94e70161f20c23ad04", // ConditionalEscrow — Arc Testnet
+  "0x34733fbbc101f2244df03508170893013528004e", // ConditionalEscrow — Arc Testnet (current deployment)
 ]);
 
 const ARC_CHAIN = {
