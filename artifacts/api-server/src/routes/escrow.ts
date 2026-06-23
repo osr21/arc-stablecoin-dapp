@@ -10,6 +10,7 @@ import {
   ReleaseEscrowParams,
   ReleaseEscrowBody,
 } from "@workspace/api-zod";
+import { logger } from "../lib/logger";
 
 const router = Router();
 
@@ -253,6 +254,85 @@ router.post("/:id/release", async (req, res) => {
     ...escrow,
     createdAt: escrow.createdAt.toISOString(),
     updatedAt: escrow.updatedAt.toISOString(),
+  });
+});
+
+const COIN_IDS: Record<string, string> = {
+  ETH: "ethereum",
+  BTC: "bitcoin",
+  SOL: "solana",
+  MATIC: "matic-network",
+};
+
+router.get("/:id/oracle-check", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id < 0) {
+    return res.status(400).json({ error: "Invalid id" });
+  }
+
+  const [escrow] = await db
+    .select()
+    .from(escrowsTable)
+    .where(eq(escrowsTable.id, id));
+  if (!escrow) return res.status(404).json({ error: "Not found" });
+
+  if (escrow.conditionType !== "oracle") {
+    return res.json({
+      conditionType: escrow.conditionType,
+      oracleType: null,
+      met: true,
+      requiresConfirmation: false,
+      description: "No oracle condition required",
+    });
+  }
+
+  let condData: Record<string, string> = {};
+  try {
+    condData = JSON.parse(escrow.conditionData ?? "{}") as Record<string, string>;
+  } catch {
+    condData = {};
+  }
+
+  const oracleType = condData.oracleType ?? "custom";
+
+  if (oracleType === "price_feed") {
+    const asset = condData.asset ?? "ETH";
+    const coinId = COIN_IDS[asset] ?? "ethereum";
+    try {
+      const priceRes = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coinId)}&vs_currencies=usd`,
+        { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000) }
+      );
+      if (!priceRes.ok) throw new Error(`upstream ${priceRes.status}`);
+      const raw = await priceRes.text();
+      if (raw.length > 4096) throw new Error("response too large");
+      const priceData = JSON.parse(raw) as Record<string, { usd?: number }>;
+      const currentPrice = priceData[coinId]?.usd;
+      if (currentPrice == null) throw new Error("price not found in response");
+      const threshold = Number(condData.threshold ?? "0");
+      const direction = condData.direction ?? "above";
+      const met = direction === "below" ? currentPrice <= threshold : currentPrice >= threshold;
+      return res.json({
+        oracleType: "price_feed",
+        asset,
+        direction,
+        threshold: condData.threshold ?? "0",
+        currentPrice: currentPrice.toFixed(2),
+        met,
+        requiresConfirmation: false,
+        description: `${asset}/USD ${direction} $${condData.threshold ?? "0"}`,
+      });
+    } catch (err) {
+      req.log.warn({ err }, "oracle: price check failed");
+      return res.status(502).json({ error: "Price oracle temporarily unavailable — try again shortly" });
+    }
+  }
+
+  return res.json({
+    oracleType,
+    description: condData.description ?? "No condition description provided",
+    met: false,
+    requiresConfirmation: true,
   });
 });
 

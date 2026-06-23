@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useWallet } from "../lib/wallet";
 import { formatTokenAmount, parseTokenAmount } from "../lib/format";
 import {
@@ -59,23 +60,213 @@ function formatCountdown(secs: number): string {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
+function formatConditionCell(conditionType: string | null, conditionData: string | null): string {
+  if (!conditionType) return "—";
+  if (conditionType === "time_based") return "Time Lock";
+  let data: Record<string, string> = {};
+  try { data = JSON.parse(conditionData ?? "{}") as Record<string, string>; } catch {}
+  if (conditionType === "oracle") {
+    if (data.oracleType === "price_feed")
+      return `${data.asset ?? "ETH"}/USD ${data.direction ?? "above"} $${data.threshold ?? "?"}`;
+    if (data.oracleType === "delivery")
+      return `Delivery: ${(data.description ?? "").slice(0, 28) || "no details"}`;
+    return `Oracle: ${(data.description ?? "custom").slice(0, 28)}`;
+  }
+  if (conditionType === "milestone")
+    return `Milestone: ${(data.description ?? "").slice(0, 28) || "no details"}`;
+  return conditionType;
+}
+
+interface OracleCheckResult {
+  oracleType?: string;
+  description?: string;
+  asset?: string;
+  direction?: string;
+  threshold?: string;
+  currentPrice?: string;
+  met: boolean;
+  requiresConfirmation: boolean;
+}
+
+type EscrowRow = {
+  id: number;
+  status: string;
+  conditionType: string | null;
+  conditionData: string | null;
+  releaseTime: number;
+  onChainId: number | null;
+  txHash: string;
+  contractAddress: string;
+};
+
+function OracleVerifyDialog({
+  escrow,
+  open,
+  onOpenChange,
+  onRelease,
+  txPending,
+}: {
+  escrow: EscrowRow | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onRelease: (id: number, onChainId: number | null | undefined, contractAddress: string) => void;
+  txPending: boolean;
+}) {
+  const [result, setResult] = useState<OracleCheckResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const isMilestone = escrow?.conditionType === "milestone";
+  let condData: Record<string, string> = {};
+  try { condData = JSON.parse(escrow?.conditionData ?? "{}") as Record<string, string>; } catch {}
+
+  useEffect(() => {
+    if (!open || !escrow || isMilestone) return;
+    setResult(null);
+    setFetchError(null);
+    setConfirmText("");
+    setLoading(true);
+    fetch(`/api/escrows/${escrow.id}/oracle-check`)
+      .then(r =>
+        r.ok
+          ? (r.json() as Promise<OracleCheckResult>)
+          : (r.json() as Promise<{ error: string }>).then(e => Promise.reject(new Error(e.error ?? "Unknown error")))
+      )
+      .then(data => setResult(data))
+      .catch((err: Error) => setFetchError(err.message))
+      .finally(() => setLoading(false));
+  }, [open, escrow?.id, isMilestone]);
+
+  const canRelease = () => {
+    if (isMilestone) return confirmText.trim().toUpperCase() === "CONFIRMED";
+    if (!result) return false;
+    if (result.requiresConfirmation) return confirmText.trim().toUpperCase() === "CONFIRMED";
+    return result.met;
+  };
+
+  const handleRelease = () => {
+    if (!escrow || !canRelease()) return;
+    onRelease(escrow.id, escrow.onChainId, escrow.contractAddress);
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>{isMilestone ? "Verify Milestone" : "Verify Oracle Condition"}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-1">
+
+          {isMilestone && (
+            <div className="rounded-lg border border-border p-3 bg-muted/20 space-y-1">
+              <p className="text-xs text-muted-foreground uppercase font-medium tracking-wide">Milestone Condition</p>
+              <p className="text-sm">{condData.description || "No milestone description provided"}</p>
+            </div>
+          )}
+
+          {!isMilestone && loading && (
+            <div className="text-center py-6 text-muted-foreground text-sm animate-pulse">
+              Querying oracle…
+            </div>
+          )}
+
+          {!isMilestone && fetchError && (
+            <div className="rounded-lg border border-destructive/50 p-3 bg-destructive/10 text-sm text-destructive">
+              {fetchError}
+            </div>
+          )}
+
+          {!isMilestone && result && (
+            <div className="rounded-lg border border-border p-3 bg-muted/20 space-y-3">
+              {result.oracleType === "price_feed" ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground uppercase font-medium tracking-wide">Price Feed Oracle</span>
+                    <Badge variant={result.met ? "default" : "destructive"}>
+                      {result.met ? "✓ Condition Met" : "✗ Not Yet Met"}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1.5 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Required</span>
+                      <span className="font-mono">{result.asset}/USD {result.direction} ${result.threshold}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Current Price</span>
+                      <span className={`font-mono font-semibold ${result.met ? "text-green-500" : "text-amber-500"}`}>
+                        ${result.currentPrice}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground uppercase font-medium tracking-wide">
+                      {result.oracleType === "delivery" ? "Delivery" : "Custom"} Oracle
+                    </span>
+                    <Badge variant="outline">Manual Confirmation</Badge>
+                  </div>
+                  <p className="text-sm">{result.description || "No condition description provided"}</p>
+                </>
+              )}
+            </div>
+          )}
+
+          {(isMilestone || (result?.requiresConfirmation && !loading)) && (
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">
+                Type <code className="bg-muted px-1 rounded font-mono">CONFIRMED</code> to attest the condition has been met
+              </Label>
+              <Input
+                value={confirmText}
+                onChange={e => setConfirmText(e.target.value)}
+                placeholder="CONFIRMED"
+                className="font-mono"
+              />
+            </div>
+          )}
+
+          <Button
+            className="w-full"
+            disabled={!canRelease() || txPending}
+            onClick={handleRelease}
+          >
+            {txPending ? "Waiting for wallet…" : "Release Funds"}
+          </Button>
+
+          {!isMilestone && result && !result.met && !result.requiresConfirmation && (
+            <p className="text-xs text-center text-muted-foreground">
+              Oracle condition not yet satisfied. Funds are automatically released once the
+              escrow's release time passes, regardless of oracle status.
+            </p>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 interface EscrowActionCellProps {
-  escrow: { id: number; status: string; conditionType: string | null; releaseTime: number; onChainId: number | null; txHash: string; contractAddress: string };
+  escrow: EscrowRow;
   isConnected: boolean;
   walletReady: boolean;
   txPending: boolean;
   onRelease: (id: number, onChainId: number | null | undefined, contractAddress: string) => void;
+  onOracleCheck: (escrow: EscrowRow) => void;
 }
 
-function EscrowActionCell({ escrow, isConnected, walletReady, txPending, onRelease }: EscrowActionCellProps) {
+function EscrowActionCell({ escrow, isConnected, walletReady, txPending, onRelease, onOracleCheck }: EscrowActionCellProps) {
   const isTimeBased = escrow.conditionType === "time_based";
+  const isOracle    = escrow.conditionType === "oracle";
+  const isMilestone = escrow.conditionType === "milestone";
   const secsLeft    = useSecondsRemaining(escrow.releaseTime);
   const expired     = secsLeft <= 0;
   const autoFired   = useRef(false);
 
   useEffect(() => {
-    // Only fire when wallet is fully ready — walletClient may lag behind isConnected.
-    // Do NOT set autoFired before confirming walletReady so we get a retry once it's set.
     if (!expired || escrow.status !== "active" || !isTimeBased || !walletReady || autoFired.current) return;
     autoFired.current = true;
     onRelease(escrow.id, escrow.onChainId, escrow.contractAddress);
@@ -88,22 +279,28 @@ function EscrowActionCell({ escrow, isConnected, walletReady, txPending, onRelea
           ⏱ {formatCountdown(secsLeft)}
         </span>
       )}
-
       {escrow.status === "active" && isTimeBased && expired && (
-        <span className="text-xs text-amber-500 animate-pulse font-medium">
-          Auto-releasing…
-        </span>
+        <span className="text-xs text-amber-500 animate-pulse font-medium">Auto-releasing…</span>
       )}
-
-      {escrow.status === "active" && !isTimeBased && isConnected && (
-        <Button variant="outline" size="sm" onClick={() => onRelease(escrow.id, escrow.onChainId, escrow.contractAddress)} disabled={txPending}>
-          Release
-        </Button>
-      )}
-
       {escrow.status === "active" && isTimeBased && expired && isConnected && (
         <Button variant="outline" size="sm" onClick={() => onRelease(escrow.id, escrow.onChainId, escrow.contractAddress)} disabled={txPending}>
           Release Now
+        </Button>
+      )}
+
+      {escrow.status === "active" && isOracle && isConnected && (
+        <Button variant="outline" size="sm" onClick={() => onOracleCheck(escrow)} disabled={txPending}>
+          Verify Oracle
+        </Button>
+      )}
+      {escrow.status === "active" && isMilestone && isConnected && (
+        <Button variant="outline" size="sm" onClick={() => onOracleCheck(escrow)} disabled={txPending}>
+          Verify Milestone
+        </Button>
+      )}
+      {escrow.status === "active" && !isTimeBased && !isOracle && !isMilestone && isConnected && (
+        <Button variant="outline" size="sm" onClick={() => onRelease(escrow.id, escrow.onChainId, escrow.contractAddress)} disabled={txPending}>
+          Release
         </Button>
       )}
 
@@ -116,6 +313,42 @@ function EscrowActionCell({ escrow, isConnected, walletReady, txPending, onRelea
   );
 }
 
+type OracleType   = "price_feed" | "custom" | "delivery";
+type PriceAsset   = "ETH" | "BTC" | "SOL" | "MATIC";
+type PriceDir     = "above" | "below";
+type TokenType    = "USDC" | "EURC";
+type CondType     = "time_based" | "milestone" | "oracle";
+
+interface FormData {
+  beneficiary: string;
+  arbiter: string;
+  token: TokenType;
+  amount: string;
+  releaseTime: string;
+  conditionType: CondType;
+  milestoneDescription: string;
+  oracleType: OracleType;
+  oraclePriceAsset: PriceAsset;
+  oraclePriceDirection: PriceDir;
+  oraclePriceThreshold: string;
+  oracleDescription: string;
+}
+
+const DEFAULT_FORM: FormData = {
+  beneficiary: "",
+  arbiter: "",
+  token: "USDC",
+  amount: "",
+  releaseTime: "",
+  conditionType: "time_based",
+  milestoneDescription: "",
+  oracleType: "price_feed",
+  oraclePriceAsset: "ETH",
+  oraclePriceDirection: "above",
+  oraclePriceThreshold: "",
+  oracleDescription: "",
+};
+
 export default function Escrow() {
   const { data: escrows, isLoading } = useListEscrows();
   const queryClient = useQueryClient();
@@ -123,20 +356,37 @@ export default function Escrow() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [txPending, setTxPending] = useState(false);
-  const [formData, setFormData] = useState({
-    beneficiary: "",
-    arbiter: "",
-    token: "USDC" as "USDC" | "EURC",
-    amount: "",
-    releaseTime: "",
-    conditionType: "time_based",
-  });
+  const [formData, setFormData] = useState<FormData>(DEFAULT_FORM);
 
-  const createEscrow  = useCreateEscrow({ mutation: { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListEscrowsQueryKey() }); setCreateOpen(false); } } });
+  const [oracleOpen, setOracleOpen]   = useState(false);
+  const [oracleEscrow, setOracleEscrow] = useState<EscrowRow | null>(null);
+
+  const createEscrow  = useCreateEscrow({ mutation: { onSuccess: () => { queryClient.invalidateQueries({ queryKey: getListEscrowsQueryKey() }); setCreateOpen(false); setFormData(DEFAULT_FORM); } } });
   const releaseEscrow = useReleaseEscrow({ mutation: { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListEscrowsQueryKey() }) } });
   const disputeEscrow = useDisputeEscrow({ mutation: { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListEscrowsQueryKey() }) } });
 
   const tokenAddress: Address = formData.token === "USDC" ? CONTRACT_ADDRESSES.USDC : CONTRACT_ADDRESSES.EURC;
+
+  const buildConditionData = (): string => {
+    if (formData.conditionType === "oracle") {
+      if (formData.oracleType === "price_feed") {
+        return JSON.stringify({
+          oracleType: "price_feed",
+          asset:      formData.oraclePriceAsset,
+          direction:  formData.oraclePriceDirection,
+          threshold:  formData.oraclePriceThreshold,
+        });
+      }
+      return JSON.stringify({
+        oracleType:  formData.oracleType,
+        description: formData.oracleDescription,
+      });
+    }
+    if (formData.conditionType === "milestone") {
+      return JSON.stringify({ description: formData.milestoneDescription });
+    }
+    return "{}";
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,6 +401,10 @@ export default function Escrow() {
       alert("Invalid arbiter address — must be a valid 0x… Ethereum address");
       return;
     }
+    if (formData.conditionType === "oracle" && formData.oracleType === "price_feed" && !formData.oraclePriceThreshold) {
+      alert("Enter a price threshold for the price feed oracle");
+      return;
+    }
 
     setTxPending(true);
     try {
@@ -159,7 +413,6 @@ export default function Escrow() {
         ? BigInt(Math.floor(new Date(formData.releaseTime).getTime() / 1000))
         : BigInt(Math.floor(Date.now() / 1000) + 86400);
 
-      // 1. Approve token spend
       const approveTx = await walletClient.writeContract({
         address: tokenAddress,
         abi: ERC20_ABI,
@@ -171,7 +424,6 @@ export default function Escrow() {
       const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveTx });
       if (approveReceipt.status !== "success") throw new Error("Token approval transaction reverted.");
 
-      // 2. Create escrow on-chain
       const createTx = await walletClient.writeContract({
         address: CONTRACT_ADDRESSES.CONDITIONAL_ESCROW,
         abi: CONDITIONAL_ESCROW_ABI,
@@ -191,7 +443,6 @@ export default function Escrow() {
       const receipt = await publicClient.waitForTransactionReceipt({ hash: createTx });
       const onChainId = parseOnChainId(receipt);
 
-      // 3. Record in DB
       await createEscrow.mutateAsync({
         data: {
           depositor:       address,
@@ -200,7 +451,8 @@ export default function Escrow() {
           token:           formData.token,
           amount:          rawAmount.toString(),
           releaseTime:     Number(releaseTimestamp),
-          conditionType:   formData.conditionType as "time_based" | "milestone" | "oracle",
+          conditionType:   formData.conditionType,
+          conditionData:   buildConditionData(),
           contractAddress: CONTRACT_ADDRESSES.CONDITIONAL_ESCROW,
           txHash:          createTx,
           chainId:         ARC_TESTNET.id,
@@ -208,7 +460,6 @@ export default function Escrow() {
         },
       });
     } catch (err: any) {
-      console.error("Create escrow failed", err);
       alert(`Transaction failed: ${err.shortMessage || err.message}`);
     } finally {
       setTxPending(false);
@@ -219,7 +470,6 @@ export default function Escrow() {
     if (!address || !walletClient) return;
     if (isWrongNetwork) { await switchToArc(); return; }
     setTxPending(true);
-    // Use the per-escrow contract address stored in DB; fall back to the current deployment.
     const escrowContract = (contractAddress ?? CONTRACT_ADDRESSES.CONDITIONAL_ESCROW) as `0x${string}`;
     try {
       const contractId = onChainId != null ? BigInt(onChainId) : BigInt(id - 1);
@@ -243,6 +493,14 @@ export default function Escrow() {
     }
   };
 
+  const handleOracleCheck = (escrow: EscrowRow) => {
+    setOracleEscrow(escrow);
+    setOracleOpen(true);
+  };
+
+  const set = <K extends keyof FormData>(k: K) => (v: FormData[K]) =>
+    setFormData(prev => ({ ...prev, [k]: v }));
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
@@ -256,7 +514,7 @@ export default function Escrow() {
         {isConnected && !isWrongNetwork && (
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
             <DialogTrigger asChild><Button>New Escrow</Button></DialogTrigger>
-            <DialogContent className="sm:max-w-[440px]">
+            <DialogContent className="sm:max-w-[460px] max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Create Escrow</DialogTitle></DialogHeader>
               <form onSubmit={handleCreate} className="space-y-4 pt-4">
                 <div className="space-y-2">
@@ -265,16 +523,16 @@ export default function Escrow() {
                 </div>
                 <div className="space-y-2">
                   <Label>Beneficiary Address</Label>
-                  <Input required value={formData.beneficiary} onChange={e => setFormData({...formData, beneficiary: e.target.value})} placeholder="0x..." className="font-mono text-xs" />
+                  <Input required value={formData.beneficiary} onChange={e => set("beneficiary")(e.target.value)} placeholder="0x..." className="font-mono text-xs" />
                 </div>
                 <div className="space-y-2">
                   <Label>Arbiter Address</Label>
-                  <Input required value={formData.arbiter} onChange={e => setFormData({...formData, arbiter: e.target.value})} placeholder="0x..." className="font-mono text-xs" />
+                  <Input required value={formData.arbiter} onChange={e => set("arbiter")(e.target.value)} placeholder="0x..." className="font-mono text-xs" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Token</Label>
-                    <Select value={formData.token} onValueChange={(v: "USDC"|"EURC") => setFormData({...formData, token: v})}>
+                    <Select value={formData.token} onValueChange={v => set("token")(v as TokenType)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="USDC">USDC</SelectItem>
@@ -284,26 +542,124 @@ export default function Escrow() {
                   </div>
                   <div className="space-y-2">
                     <Label>Amount</Label>
-                    <Input required type="number" step="0.000001" min="0.000001" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} placeholder="0.00" />
+                    <Input required type="number" step="0.000001" min="0.000001" value={formData.amount} onChange={e => set("amount")(e.target.value)} placeholder="0.00" />
                   </div>
                 </div>
+
                 <div className="space-y-2">
                   <Label>Condition Type</Label>
-                  <Select value={formData.conditionType} onValueChange={v => setFormData({...formData, conditionType: v})}>
+                  <Select value={formData.conditionType} onValueChange={v => set("conditionType")(v as CondType)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="time_based">Time Based</SelectItem>
-                      <SelectItem value="milestone">Milestone</SelectItem>
-                      <SelectItem value="oracle">Oracle</SelectItem>
+                      <SelectItem value="time_based">Time Based — auto-release after lock expires</SelectItem>
+                      <SelectItem value="milestone">Milestone — depositor confirms completion</SelectItem>
+                      <SelectItem value="oracle">Oracle — verified by external data source</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
+                {formData.conditionType === "milestone" && (
+                  <div className="space-y-2 rounded-lg border border-border p-3 bg-muted/10">
+                    <p className="text-xs text-muted-foreground uppercase font-medium tracking-wide">Milestone Details</p>
+                    <Label className="text-xs">What must be achieved for funds to release?</Label>
+                    <Textarea
+                      rows={2}
+                      placeholder="e.g. Project phase 1 completed and deliverables submitted"
+                      value={formData.milestoneDescription}
+                      onChange={e => set("milestoneDescription")(e.target.value)}
+                      className="text-sm resize-none"
+                    />
+                  </div>
+                )}
+
+                {formData.conditionType === "oracle" && (
+                  <div className="space-y-3 rounded-lg border border-border p-3 bg-muted/10">
+                    <p className="text-xs text-muted-foreground uppercase font-medium tracking-wide">Oracle Settings</p>
+                    <div className="space-y-2">
+                      <Label className="text-xs">Oracle Type</Label>
+                      <Select value={formData.oracleType} onValueChange={v => set("oracleType")(v as OracleType)}>
+                        <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="price_feed">Price Feed — ETH, BTC, SOL, MATIC vs USD</SelectItem>
+                          <SelectItem value="custom">Custom Condition — manual attestation</SelectItem>
+                          <SelectItem value="delivery">Delivery Confirmation — off-chain delivery</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {formData.oracleType === "price_feed" && (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Asset</Label>
+                            <Select value={formData.oraclePriceAsset} onValueChange={v => set("oraclePriceAsset")(v as PriceAsset)}>
+                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ETH">ETH</SelectItem>
+                                <SelectItem value="BTC">BTC</SelectItem>
+                                <SelectItem value="SOL">SOL</SelectItem>
+                                <SelectItem value="MATIC">MATIC</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Direction</Label>
+                            <Select value={formData.oraclePriceDirection} onValueChange={v => set("oraclePriceDirection")(v as PriceDir)}>
+                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="above">Above ≥</SelectItem>
+                                <SelectItem value="below">Below ≤</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Price (USD)</Label>
+                            <Input
+                              className="h-8 text-xs"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              placeholder="e.g. 3000"
+                              value={formData.oraclePriceThreshold}
+                              onChange={e => set("oraclePriceThreshold")(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        {formData.oraclePriceThreshold && (
+                          <p className="text-xs text-muted-foreground">
+                            Release when {formData.oraclePriceAsset}/USD is {formData.oraclePriceDirection === "above" ? "≥" : "≤"} ${formData.oraclePriceThreshold}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {(formData.oracleType === "custom" || formData.oracleType === "delivery") && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">
+                          {formData.oracleType === "delivery" ? "Delivery Description" : "Condition Description"}
+                        </Label>
+                        <Textarea
+                          rows={2}
+                          placeholder={
+                            formData.oracleType === "delivery"
+                              ? "e.g. Package delivered to 123 Main St by June 30"
+                              : "e.g. Client has signed the service agreement"
+                          }
+                          value={formData.oracleDescription}
+                          onChange={e => set("oracleDescription")(e.target.value)}
+                          className="text-sm resize-none"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="space-y-2">
-                  <Label>Release Time</Label>
-                  <Input type="datetime-local" value={formData.releaseTime} onChange={e => setFormData({...formData, releaseTime: e.target.value})} />
+                  <Label>Release Time <span className="text-muted-foreground text-xs">(deadline / time-lock expiry)</span></Label>
+                  <Input type="datetime-local" value={formData.releaseTime} onChange={e => set("releaseTime")(e.target.value)} />
                 </div>
                 <Button type="submit" className="w-full mt-4" disabled={txPending}>
-                  {txPending ? "Waiting for wallet..." : "Approve & Deploy Escrow"}
+                  {txPending ? "Waiting for wallet…" : "Approve & Deploy Escrow"}
                 </Button>
                 <p className="text-xs text-muted-foreground text-center">Two transactions: approve token spend, then create escrow</p>
               </form>
@@ -327,7 +683,7 @@ export default function Escrow() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-8">Loading…</TableCell></TableRow>
             ) : !escrows?.length ? (
               <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground">No escrows yet. Create your first one above.</TableCell></TableRow>
             ) : escrows.map((escrow) => (
@@ -337,17 +693,20 @@ export default function Escrow() {
                 <TableCell>
                   <Badge variant={statusVariant(escrow.status) as any}>{escrow.status}</Badge>
                 </TableCell>
-                <TableCell className="text-xs text-muted-foreground">{escrow.conditionType ?? "—"}</TableCell>
+                <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate" title={formatConditionCell(escrow.conditionType, escrow.conditionData ?? null)}>
+                  {formatConditionCell(escrow.conditionType, escrow.conditionData ?? null)}
+                </TableCell>
                 <TableCell className="font-mono text-xs" title={escrow.beneficiary}>
-                  {escrow.beneficiary.slice(0,6)}...{escrow.beneficiary.slice(-4)}
+                  {escrow.beneficiary.slice(0,6)}…{escrow.beneficiary.slice(-4)}
                 </TableCell>
                 <TableCell className="text-right">
                   <EscrowActionCell
-                    escrow={escrow as any}
+                    escrow={escrow as EscrowRow}
                     isConnected={isConnected}
                     walletReady={isConnected && !!walletClient}
                     txPending={txPending}
                     onRelease={handleRelease}
+                    onOracleCheck={handleOracleCheck}
                   />
                 </TableCell>
               </TableRow>
@@ -355,6 +714,14 @@ export default function Escrow() {
           </TableBody>
         </Table>
       </Card>
+
+      <OracleVerifyDialog
+        escrow={oracleEscrow}
+        open={oracleOpen}
+        onOpenChange={setOracleOpen}
+        onRelease={handleRelease}
+        txPending={txPending}
+      />
     </div>
   );
 }
