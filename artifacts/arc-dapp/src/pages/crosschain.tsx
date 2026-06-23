@@ -353,7 +353,6 @@ function ReceiveDialog({
         args: [rid],
         account,
         chain: destViemChain as any,
-        gas: 120_000n,
       });
       await pc.waitForTransactionReceipt({ hash });
       setTimeLockClaimTx(hash);
@@ -851,7 +850,6 @@ export default function Crosschain() {
         args: [CONTRACT_ADDRESSES.CROSSCHAIN_ESCROW, rawAmount],
         account: address,
         chain: ARC_TESTNET as any,
-        gas: 80_000n,
       });
       await publicClient.waitForTransactionReceipt({ hash: approveTx });
 
@@ -870,7 +868,6 @@ export default function Crosschain() {
         ],
         account: address,
         chain: ARC_TESTNET as any,
-        gas: 400_000n,
       });
       await publicClient.waitForTransactionReceipt({ hash: transferTx });
 

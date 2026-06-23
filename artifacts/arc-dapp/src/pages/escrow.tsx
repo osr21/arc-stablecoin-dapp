@@ -433,7 +433,6 @@ export default function Escrow() {
         args: [CONTRACT_ADDRESSES.CONDITIONAL_ESCROW, rawAmount],
         account: address,
         chain: ARC_TESTNET as any,
-        gas: 80_000n,
       });
       const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveTx });
       if (approveReceipt.status !== "success") throw new Error("Token approval transaction reverted.");
@@ -453,7 +452,6 @@ export default function Escrow() {
         ],
         account: address,
         chain: ARC_TESTNET as any,
-        gas: 350_000n,
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash: createTx });
       const onChainId = parseOnChainId(receipt);
@@ -495,7 +493,6 @@ export default function Escrow() {
         args: [contractId],
         account: address,
         chain: ARC_TESTNET as any,
-        gas: 120_000n,
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash: tx });
       if (receipt.status !== "success") {

@@ -59,7 +59,6 @@ export default function Vesting() {
         args: [CONTRACT_ADDRESSES.PAYROLL_VESTING, rawAmount],
         account: address,
         chain: ARC_TESTNET as any,
-        gas: 80_000n,
       });
       await publicClient.waitForTransactionReceipt({ hash: approveTx });
 
@@ -78,7 +77,6 @@ export default function Vesting() {
         ],
         account: address,
         chain: ARC_TESTNET as any,
-        gas: 350_000n,
       });
       await publicClient.waitForTransactionReceipt({ hash: createTx });
 
@@ -115,7 +113,6 @@ export default function Vesting() {
         args: [BigInt(onchainId)],
         account: address,
         chain: ARC_TESTNET as any,
-        gas: 120_000n,
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash: tx });
       if (receipt.status !== "success") {
