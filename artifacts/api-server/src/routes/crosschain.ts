@@ -163,11 +163,26 @@ router.patch("/:id", async (req, res) => {
     return res.status(400).json({ error: "Invalid mintTxHash format" });
   }
 
+  // If a releaseId is supplied, merge it into the hookData JSON so it
+  // survives browser cache clears (frontend reads it back from DB on mount).
+  let updatedHookData = existing.hookData;
+  const releaseId = typeof req.body.releaseId === "string" ? req.body.releaseId : null;
+  if (releaseId && /^0x[0-9a-fA-F]+$/.test(releaseId)) {
+    try {
+      const parsed = existing.hookData ? (JSON.parse(existing.hookData) as Record<string, unknown>) : {};
+      parsed.releaseId = releaseId;
+      updatedHookData = JSON.stringify(parsed);
+    } catch {
+      // leave hookData unchanged if parsing fails
+    }
+  }
+
   const [updated] = await db
     .update(crosschainTransfersTable)
     .set({
       status:     body.data.status,
       mintTxHash: body.data.mintTxHash ?? existing.mintTxHash,
+      hookData:   updatedHookData,
       updatedAt:  new Date(),
     })
     .where(and(

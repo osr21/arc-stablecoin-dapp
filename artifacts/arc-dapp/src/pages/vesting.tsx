@@ -213,7 +213,7 @@ export default function Vesting() {
                 <TableCell>{sched.token}</TableCell>
                 <TableCell className="text-right space-x-2">
                   {isConnected && address?.toLowerCase() === sched.beneficiary.toLowerCase() && (
-                    <Button variant="outline" size="sm" onClick={() => handleClaim(sched.id, idx)} disabled={txPending}>
+                    <Button variant="outline" size="sm" onClick={() => handleClaim(sched.id, sched.id - 1)} disabled={txPending}>
                       Claim
                     </Button>
                   )}

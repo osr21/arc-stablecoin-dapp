@@ -92,9 +92,11 @@ function ReceiveDialog({
   const [timeLockClaimTx, setTimeLockClaimTx]   = useState<string | null>(null);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   // releaseId emitted by TimeLockHook.relay() — nonce-based, not pre-computable.
-  // Persisted in localStorage so it survives dialog close/reopen.
+  // Prefer DB-persisted value (via hookData) so it survives browser cache clears.
+  // Fall back to localStorage for transfers completed before DB persistence was added.
   const [actualReleaseId, setActualReleaseId] = useState<`0x${string}` | null>(() =>
-    localStorage.getItem(`timeLock_releaseId_${transferId}`) as `0x${string}` | null
+    (timeLockMeta?.releaseId as `0x${string}` | undefined) ??
+    (localStorage.getItem(`timeLock_releaseId_${transferId}`) as `0x${string}` | null)
   );
 
   const queryClient = useQueryClient();
@@ -135,9 +137,11 @@ function ReceiveDialog({
     setPolling(true);
     try {
       const res = await fetch(`/api/cctp/attestation/${txHash}`);
+      if (!res.ok) throw new Error(`Attestation service returned ${res.status}`);
       const data: AttestationResult = await res.json();
       setAttest(data);
-    } catch {
+    } catch (e: any) {
+      setErr(e?.message ?? "Failed to fetch attestation status — check your connection");
     } finally {
       setPolling(false);
     }
@@ -258,10 +262,13 @@ function ReceiveDialog({
           const rid = events[0].args.releaseId as `0x${string}`;
           setActualReleaseId(rid);
           localStorage.setItem(`timeLock_releaseId_${transferId}`, rid);
+          setClaimTx(hash);
+          // Persist releaseId to DB by merging it into hookData so it survives cache clears.
+          updateStatus.mutate({ id: transferId, data: { status: "complete", mintTxHash: hash, releaseId: rid, caller: walletAddress } as any });
+        } else {
+          setClaimTx(hash);
+          updateStatus.mutate({ id: transferId, data: { status: "complete", mintTxHash: hash, caller: walletAddress } as any });
         }
-
-        setClaimTx(hash);
-        updateStatus.mutate({ id: transferId, data: { status: "complete", mintTxHash: hash, caller: walletAddress } as any });
       } else {
         // Standard CCTP relay — USDC minted directly to recipient.
         const hash = await wc.writeContract({

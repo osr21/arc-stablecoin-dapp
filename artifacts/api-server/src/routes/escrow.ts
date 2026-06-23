@@ -297,7 +297,18 @@ router.get("/:id/oracle-check", async (req, res) => {
 
   if (oracleType === "price_feed") {
     const asset = condData.asset ?? "ETH";
-    const coinId = COIN_IDS[asset] ?? "ethereum";
+    const coinId = COIN_IDS[asset];
+    if (!coinId) {
+      return res.status(400).json({ error: `Unknown asset '${asset}'. Supported: ${Object.keys(COIN_IDS).join(", ")}` });
+    }
+    const direction = condData.direction ?? "above";
+    if (direction !== "above" && direction !== "below") {
+      return res.status(400).json({ error: "Invalid direction — must be 'above' or 'below'" });
+    }
+    const threshold = Number(condData.threshold ?? "0");
+    if (!Number.isFinite(threshold)) {
+      return res.status(400).json({ error: "Invalid threshold — must be a finite number" });
+    }
     try {
       const priceRes = await fetch(
         `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coinId)}&vs_currencies=usd`,
@@ -309,18 +320,16 @@ router.get("/:id/oracle-check", async (req, res) => {
       const priceData = JSON.parse(raw) as Record<string, { usd?: number }>;
       const currentPrice = priceData[coinId]?.usd;
       if (currentPrice == null) throw new Error("price not found in response");
-      const threshold = Number(condData.threshold ?? "0");
-      const direction = condData.direction ?? "above";
       const met = direction === "below" ? currentPrice <= threshold : currentPrice >= threshold;
       return res.json({
         oracleType: "price_feed",
         asset,
         direction,
-        threshold: condData.threshold ?? "0",
+        threshold: threshold.toString(),
         currentPrice: currentPrice.toFixed(2),
         met,
         requiresConfirmation: false,
-        description: `${asset}/USD ${direction} $${condData.threshold ?? "0"}`,
+        description: `${asset}/USD ${direction} $${threshold}`,
       });
     } catch (err) {
       req.log.warn({ err }, "oracle: price check failed");

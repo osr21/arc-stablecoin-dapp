@@ -91,6 +91,8 @@ app.use("/api", limiter);
 app.use("/api/escrows", strictLimiter);
 app.use("/api/vesting", strictLimiter);
 app.use("/api/crosschain", strictLimiter);
+app.use("/api/dashboard", strictLimiter);
+app.use("/api/keeper", strictLimiter);
 
 app.use("/api", router);
 
