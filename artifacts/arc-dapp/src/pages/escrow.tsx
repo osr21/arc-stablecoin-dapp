@@ -139,7 +139,7 @@ function OracleVerifyDialog({
       .then(r => {
         if (r.status === 402) {
           throw new Error(
-            `Oracle check costs ${X402_PRICE_LABELS.oracleCheck} USDC per call (x402). ` +
+            `Oracle check costs ${X402_PRICE_LABELS.oracleCheck} per call (x402). ` +
             `Connect your MetaMask wallet to pay automatically.`,
           );
         }

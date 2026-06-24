@@ -146,7 +146,7 @@ function ReceiveDialog({
       const res = await doFetch(`/api/cctp/attestation/${txHash}`);
       if (res.status === 402) {
         throw new Error(
-          `Attestation polling costs ${X402_PRICE_LABELS.attestation} USDC per call (x402). ` +
+          `Attestation polling costs ${X402_PRICE_LABELS.attestation} per call (x402). ` +
           `Connect your MetaMask wallet to pay automatically.`,
         );
       }
