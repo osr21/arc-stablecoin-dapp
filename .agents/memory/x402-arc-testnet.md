@@ -20,6 +20,31 @@ description: How x402 payment middleware is wired on Arc Testnet — in-process 
 
 **`x402ResourceServer` constructor**: Takes `FacilitatorClient as any` because the types don't perfectly overlap. The runtime works fine.
 
+**`verifyTypedData` must use local ecrecover**: Use `recoverTypedDataAddress` (pure local, zero RPC) and compare with `isAddressEqual`. Note: viem 2.52.2's `publicClient.verifyTypedData` also uses local ecrecover under the hood (confirmed from source), so the reason isn't Arc missing the Universal Signature Validator — it's belt-and-suspenders and avoids any future viem behavior changes.
+
+```ts
+verifyTypedData: async (args: any) => {
+  try {
+    const recovered = await recoverTypedDataAddress(args);
+    return isAddressEqual(recovered, args.address);
+  } catch {
+    return false;
+  }
+},
+```
+
+**MetaMask EIP712Domain injection (root cause of `invalid_exact_evm_signature`)**: `@metamask/eth-sig-util`'s `sanitizeData()` inserts `EIP712Domain: []` (empty array) when `EIP712Domain` is absent from `types`. This makes MetaMask compute the domain separator with type string `"EIP712Domain()"` — completely different from viem's inferred 4-field type `"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"`. The domain separators never match → every signature fails verification. Fix: always inject the correct EIP712Domain fields into `types` before calling `eth_signTypedData_v4`:
+
+```ts
+const eip712DomainFields = [];
+if (message.domain.name !== undefined) eip712DomainFields.push({ name: "name", type: "string" });
+if (message.domain.version !== undefined) eip712DomainFields.push({ name: "version", type: "string" });
+if (message.domain.chainId !== undefined) eip712DomainFields.push({ name: "chainId", type: "uint256" });
+if (message.domain.verifyingContract !== undefined) eip712DomainFields.push({ name: "verifyingContract", type: "address" });
+const typesWithDomain = { EIP712Domain: eip712DomainFields, ...message.types };
+// Pass typesWithDomain to eth_signTypedData_v4
+```
+
 ## Gated routes
 
 - `GET /api/escrows/:id/oracle-check` — 0.01 USDC (10000 raw)
@@ -27,6 +52,6 @@ description: How x402 payment middleware is wired on Arc Testnet — in-process 
 
 ## Why
 
-**Why:** Arc Testnet is custom (chain ID 5042002, USDC = 0x3600...0000, also native gas token). None of the x402 default network registries know it. Custom money parser + explicit EIP-712 domain in `extra` + explicit network string are all required.
+**Why:** Arc Testnet is custom (chain ID 5042002, USDC = 0x3600...0000, also native gas token). None of the x402 default network registries know it. Custom money parser + explicit EIP-712 domain in `extra` + explicit network string + local ecrecover are all required.
 
-**How to apply:** Whenever adding new x402-gated routes or adding a new non-standard EVM network, always include `extra: { name: "<token name>", version: "<token version>" }` in the accepts config. Read name/version via eth_call on the token contract (selectors: `0x06fdde03` = name, `0x54fd4d50` = version).
+**How to apply:** Whenever using x402 on a custom/non-standard chain with viem v2: never use `publicClient.verifyTypedData` — it requires the Universal Signature Validator contract which is not deployed on most testnets. Always use `recoverTypedDataAddress` for EOA signature verification. Also always include `extra: { name, version }` in accepts config.

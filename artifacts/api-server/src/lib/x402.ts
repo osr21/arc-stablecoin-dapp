@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, http } from "viem";
+import { createPublicClient, createWalletClient, http, recoverTypedDataAddress, isAddressEqual } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { x402Facilitator } from "@x402/core/facilitator";
 import { registerExactEvmScheme as registerFacilitatorScheme } from "@x402/evm/exact/facilitator";
@@ -45,7 +45,17 @@ export function buildX402Middleware(): RequestHandler | null {
   const combinedSigner = {
     address:                   account.address,
     signTypedData:             (args: any) => walletClient.signTypedData({ account, ...args } as any),
-    verifyTypedData:           (args: any) => publicClient.verifyTypedData(args as any),
+    // viem v2's publicClient.verifyTypedData calls the Universal Signature
+    // Validator contract via eth_call, which is not deployed on Arc Testnet.
+    // Use recoverTypedDataAddress (pure local ecrecover, zero RPC) instead.
+    verifyTypedData: async (args: any) => {
+      try {
+        const recovered = await recoverTypedDataAddress(args);
+        return isAddressEqual(recovered, args.address);
+      } catch {
+        return false;
+      }
+    },
     writeContract:             (args: any) => walletClient.writeContract({ account, ...args } as any),
     waitForTransactionReceipt: (args: any) => publicClient.waitForTransactionReceipt(args),
     getLogs:                   (args: any) => publicClient.getLogs(args as any),
@@ -60,6 +70,28 @@ export function buildX402Middleware(): RequestHandler | null {
 
   const facilitatorClient = {
     verify: async (...args: Parameters<typeof facilitator.verify>) => {
+      // Temporarily log the raw payload for debugging EIP-712 signature mismatches
+      try {
+        const rawPayload = args[0];
+        const accepted = (rawPayload as any)?.accepted;
+        if (accepted?.payload) {
+          const decoded = JSON.parse(Buffer.from(accepted.payload, "base64").toString());
+          logger.info(
+            {
+              authorization: decoded?.payload?.authorization,
+              signatureHex: (decoded?.payload?.signature as string)?.slice(0, 10) + "…",
+              domain: {
+                name:              args[1]?.extra?.name,
+                version:           args[1]?.extra?.version,
+                chainId:           (args[1]?.network as string)?.split(":")?.[1],
+                verifyingContract: args[1]?.asset,
+              },
+            },
+            "x402 verify: authorization payload (debug)",
+          );
+        }
+      } catch { /* ignore diagnostic errors */ }
+
       const result = await facilitator.verify(...args);
       if (!result.isValid) {
         logger.warn(

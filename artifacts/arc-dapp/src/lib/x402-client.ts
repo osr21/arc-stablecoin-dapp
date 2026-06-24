@@ -66,13 +66,32 @@ export function buildX402Fetch(walletAddress: `0x${string}`): typeof globalThis.
     }) => {
       const eth = (window as any).ethereum;
       if (!eth) throw new Error("MetaMask not found");
+
+      // @metamask/eth-sig-util's sanitizeData() inserts `EIP712Domain: []`
+      // (empty) when the key is absent from `types`. This makes MetaMask hash
+      // the domain separator with type string "EIP712Domain()" — completely
+      // different from viem's inferred 4-field type — causing every signature
+      // to fail verification. Inject the correct EIP712Domain explicitly so
+      // both sides compute the same domain separator.
+      const eip712DomainFields: { name: string; type: string }[] = [];
+      if (message.domain.name !== undefined)
+        eip712DomainFields.push({ name: "name", type: "string" });
+      if (message.domain.version !== undefined)
+        eip712DomainFields.push({ name: "version", type: "string" });
+      if (message.domain.chainId !== undefined)
+        eip712DomainFields.push({ name: "chainId", type: "uint256" });
+      if (message.domain.verifyingContract !== undefined)
+        eip712DomainFields.push({ name: "verifyingContract", type: "address" });
+
+      const typesWithDomain = { EIP712Domain: eip712DomainFields, ...message.types };
+
       // BigInt values (value, validAfter, validBefore) must be serialized as
       // decimal strings for eth_signTypedData_v4 — JSON.stringify rejects BigInt.
       const replacer = (_: string, v: unknown) =>
         typeof v === "bigint" ? v.toString() : v;
       return eth.request({
         method: "eth_signTypedData_v4",
-        params: [walletAddress, JSON.stringify(message, replacer)],
+        params: [walletAddress, JSON.stringify({ ...message, types: typesWithDomain }, replacer)],
       }) as Promise<`0x${string}`>;
     },
   };
