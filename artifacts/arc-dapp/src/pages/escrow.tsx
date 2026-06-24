@@ -130,17 +130,21 @@ function OracleVerifyDialog({
 
   useEffect(() => {
     if (!open || !escrow || isMilestone) return;
+    // Skip auto-fetch when no wallet is connected — x402Fetch is null and a plain
+    // fetch would immediately receive HTTP 402.  The effect re-runs automatically
+    // once the wallet hydrates and x402Fetch becomes non-null.
+    if (!x402Fetch) return;
     setResult(null);
     setFetchError(null);
     setConfirmText("");
     setLoading(true);
-    const doFetch = x402Fetch ?? globalThis.fetch.bind(globalThis);
-    doFetch(`/api/escrows/${escrow.id}/oracle-check`)
+    x402Fetch(`/api/escrows/${escrow.id}/oracle-check`)
       .then(r => {
         if (r.status === 402) {
+          // Payment was attempted (wallet is connected) but the server still
+          // returned 402 — e.g. signature was rejected or settlement failed.
           throw new Error(
-            `Oracle check costs ${X402_PRICE_LABELS.oracleCheck} per call (x402). ` +
-            `Connect your MetaMask wallet to pay automatically.`,
+            `Payment was rejected or failed. Please try again (costs ${X402_PRICE_LABELS.oracleCheck}).`,
           );
         }
         return r.ok
@@ -180,9 +184,20 @@ function OracleVerifyDialog({
             </div>
           )}
 
+          {!isMilestone && !x402Fetch && !loading && !result && !fetchError && (
+            <div className="rounded-lg border border-border p-3 bg-muted/20 text-sm text-muted-foreground space-y-1">
+              <p className="font-medium text-foreground">Wallet required</p>
+              <p>
+                This oracle check costs <span className="font-mono text-foreground">{X402_PRICE_LABELS.oracleCheck}</span> per
+                call, paid automatically via x402. Connect your MetaMask wallet
+                (Arc Testnet, Chain ID 5042002) using the button in the header.
+              </p>
+            </div>
+          )}
+
           {!isMilestone && loading && (
             <div className="text-center py-6 text-muted-foreground text-sm animate-pulse">
-              Querying oracle…
+              Querying oracle… paying {X402_PRICE_LABELS.oracleCheck} via MetaMask
             </div>
           )}
 

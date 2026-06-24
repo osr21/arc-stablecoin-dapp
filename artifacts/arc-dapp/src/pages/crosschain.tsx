@@ -142,12 +142,17 @@ function ReceiveDialog({
   const poll = useCallback(async () => {
     setPolling(true);
     try {
-      const doFetch = x402Fetch ?? globalThis.fetch.bind(globalThis);
-      const res = await doFetch(`/api/cctp/attestation/${txHash}`);
-      if (res.status === 402) {
+      if (!x402Fetch) {
         throw new Error(
           `Attestation polling costs ${X402_PRICE_LABELS.attestation} per call (x402). ` +
-          `Connect your MetaMask wallet to pay automatically.`,
+          `Connect your MetaMask wallet (Arc Testnet) using the button in the header to pay automatically.`,
+        );
+      }
+      const res = await x402Fetch(`/api/cctp/attestation/${txHash}`);
+      if (res.status === 402) {
+        // Payment was attempted but server still returned 402 (rejected or settlement failed).
+        throw new Error(
+          `Payment was rejected or failed. Please try again (costs ${X402_PRICE_LABELS.attestation}).`,
         );
       }
       if (!res.ok) throw new Error(`Attestation service returned ${res.status}`);
