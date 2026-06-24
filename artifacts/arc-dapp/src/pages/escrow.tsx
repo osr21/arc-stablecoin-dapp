@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useListEscrows, useCreateEscrow, useDisputeEscrow, useReleaseEscrow, getListEscrowsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useWallet } from "../lib/wallet";
 import { formatTokenAmount, parseTokenAmount } from "../lib/format";
+import { buildX402Fetch, X402_PRICE_LABELS } from "../lib/x402-client";
 import {
   CONTRACT_ADDRESSES, CONDITIONAL_ESCROW_ABI, ERC20_ABI,
   parseToken, ARC_TESTNET,
@@ -117,6 +118,12 @@ function OracleVerifyDialog({
   const [confirmText, setConfirmText] = useState("");
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  const { address: walletAddress } = useWallet();
+  const x402Fetch = useMemo(
+    () => (walletAddress ? buildX402Fetch(walletAddress) : null),
+    [walletAddress],
+  );
+
   const isMilestone = escrow?.conditionType === "milestone";
   let condData: Record<string, string> = {};
   try { condData = JSON.parse(escrow?.conditionData ?? "{}") as Record<string, string>; } catch {}
@@ -127,16 +134,23 @@ function OracleVerifyDialog({
     setFetchError(null);
     setConfirmText("");
     setLoading(true);
-    fetch(`/api/escrows/${escrow.id}/oracle-check`)
-      .then(r =>
-        r.ok
+    const doFetch = x402Fetch ?? globalThis.fetch.bind(globalThis);
+    doFetch(`/api/escrows/${escrow.id}/oracle-check`)
+      .then(r => {
+        if (r.status === 402) {
+          throw new Error(
+            `Oracle check costs ${X402_PRICE_LABELS.oracleCheck} USDC per call (x402). ` +
+            `Connect your MetaMask wallet to pay automatically.`,
+          );
+        }
+        return r.ok
           ? (r.json() as Promise<OracleCheckResult>)
-          : (r.json() as Promise<{ error: string }>).then(e => Promise.reject(new Error(e.error ?? "Unknown error")))
-      )
+          : (r.json() as Promise<{ error: string }>).then(e => Promise.reject(new Error(e.error ?? "Unknown error")));
+      })
       .then(data => setResult(data))
       .catch((err: Error) => setFetchError(err.message))
       .finally(() => setLoading(false));
-  }, [open, escrow?.id, isMilestone]);
+  }, [open, escrow?.id, isMilestone, x402Fetch]);
 
   const canRelease = () => {
     if (isMilestone) return confirmText.trim().toUpperCase() === "CONFIRMED";

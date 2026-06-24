@@ -5,6 +5,7 @@ import rateLimit from "express-rate-limit";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { buildX402Middleware } from "./lib/x402";
 
 const app: Express = express();
 
@@ -93,6 +94,11 @@ app.use("/api/vesting", strictLimiter);
 app.use("/api/crosschain", strictLimiter);
 app.use("/api/dashboard", strictLimiter);
 app.use("/api/keeper", strictLimiter);
+
+// x402 payment gates — intercepts matching routes before they reach handlers.
+// The in-process facilitator settles USDC payments on Arc Testnet via EIP-3009.
+const x402 = buildX402Middleware();
+if (x402) app.use(x402);
 
 app.use("/api", router);
 

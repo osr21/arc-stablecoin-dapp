@@ -49,6 +49,7 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "@workspace/api-client-react": "workspace:*",
+    "@x402/evm": "^2.16.0",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "cmdk": "^1.1.1",
@@ -75,6 +76,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@x402/fetch": "^2.16.0",
     "viem": "^2.52.2"
   }
 }

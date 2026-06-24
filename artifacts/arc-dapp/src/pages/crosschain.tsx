@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { createWalletClient, createPublicClient, custom, http, encodeFunctionData, isAddress, parseEventLogs } from "viem";
 import { useListCrosschainTransfers, useCreateCrosschainTransfer, useUpdateCrosschainTransferStatus, getListCrosschainTransfersQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { useWallet } from "../lib/wallet";
 import { formatTokenAmount } from "../lib/format";
+import { buildX402Fetch, X402_PRICE_LABELS } from "../lib/x402-client";
 import {
   CONTRACT_ADDRESSES, CROSSCHAIN_ESCROW_ABI, ERC20_ABI, DEST_DOMAINS,
   DEST_CHAIN_CONFIGS, MESSAGE_TRANSMITTER_V2_ADDRESS,
@@ -133,10 +134,22 @@ function ReceiveDialog({
     }
   }, [destConfig]);
 
+  const x402Fetch = useMemo(
+    () => (walletAddress ? buildX402Fetch(walletAddress as `0x${string}`) : null),
+    [walletAddress],
+  );
+
   const poll = useCallback(async () => {
     setPolling(true);
     try {
-      const res = await fetch(`/api/cctp/attestation/${txHash}`);
+      const doFetch = x402Fetch ?? globalThis.fetch.bind(globalThis);
+      const res = await doFetch(`/api/cctp/attestation/${txHash}`);
+      if (res.status === 402) {
+        throw new Error(
+          `Attestation polling costs ${X402_PRICE_LABELS.attestation} USDC per call (x402). ` +
+          `Connect your MetaMask wallet to pay automatically.`,
+        );
+      }
       if (!res.ok) throw new Error(`Attestation service returned ${res.status}`);
       const data: AttestationResult = await res.json();
       setAttest(data);
@@ -145,7 +158,7 @@ function ReceiveDialog({
     } finally {
       setPolling(false);
     }
-  }, [txHash]);
+  }, [txHash, x402Fetch]);
 
   useEffect(() => {
     if (!open) return;

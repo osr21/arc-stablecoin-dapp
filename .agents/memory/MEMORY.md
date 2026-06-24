@@ -1,3 +1,4 @@
 - [PayrollVesting token whitelist](payvest-whitelist.md) — contract needs redeployment after whitelist fix; on-chain address in replit.md is stale until then
 - [Keeper contract allowlist](keeper-allowlist.md) — keeper.ts has ALLOWED_CONTRACTS Set; update it whenever ConditionalEscrow is redeployed to a new address
 - [ArcScan contract verification](arcscan-verification.md) — how to verify Arc Testnet contracts on ArcScan; note on source/bytecode divergence between deployed and current code.
+- [x402 Arc Testnet integration](x402-arc-testnet.md) — in-process facilitator on Arc Testnet; EIP-3009 exact scheme; custom money parser required for Arc USDC.
