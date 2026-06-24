@@ -4,6 +4,41 @@ import { registerExactEvmScheme } from "@x402/evm/exact/client";
 const ARC_CHAIN_ID = 5042002;
 const ARC_RPC = "https://rpc.testnet.arc.network";
 
+const REASON_MESSAGES: Record<string, string> = {
+  invalid_exact_evm_insufficient_balance:
+    "Insufficient USDC on Arc Testnet. Get testnet funds at faucet.circle.com, then try again.",
+  invalid_exact_evm_nonce_already_used:
+    "This payment authorization was already used — please retry to generate a new one.",
+  invalid_exact_evm_signature:
+    "Payment signature invalid. Please reject any pending MetaMask requests and try again.",
+  invalid_exact_evm_transaction_simulation_failed:
+    "Transaction simulation failed on Arc Testnet. Check your USDC balance and network connection.",
+  invalid_exact_evm_eip3009_not_supported:
+    "Arc Testnet USDC does not support EIP-3009 transfers (unexpected).",
+  invalid_exact_evm_network_mismatch:
+    "Network mismatch — ensure MetaMask is connected to Arc Testnet (Chain ID 5042002).",
+  invalid_exact_evm_recipient_mismatch:
+    "Payment recipient mismatch — the server rejected the authorization.",
+  invalid_exact_evm_payload_authorization_valid_before:
+    "Payment authorization expired. Please try again.",
+};
+
+/**
+ * Decode the X-PAYMENT-RESPONSE header from a retry-402 response to get
+ * a human-readable error message explaining why the payment was rejected.
+ */
+export function decode402Error(response: Response, fallback: string): string {
+  try {
+    const header = response.headers.get("X-PAYMENT-RESPONSE");
+    if (!header) return fallback;
+    const decoded = JSON.parse(atob(header)) as { error?: string };
+    const reason = decoded?.error ?? "";
+    return REASON_MESSAGES[reason] ?? (reason ? `Payment rejected: ${reason}` : fallback);
+  } catch {
+    return fallback;
+  }
+}
+
 export const X402_PRICES = {
   oracleCheck: "0.01",
   attestation: "0.05",

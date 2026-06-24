@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useWallet } from "../lib/wallet";
 import { formatTokenAmount, parseTokenAmount } from "../lib/format";
-import { buildX402Fetch, X402_PRICE_LABELS } from "../lib/x402-client";
+import { buildX402Fetch, decode402Error, X402_PRICE_LABELS } from "../lib/x402-client";
 import {
   CONTRACT_ADDRESSES, CONDITIONAL_ESCROW_ABI, ERC20_ABI,
   parseToken, ARC_TESTNET,
@@ -141,11 +141,10 @@ function OracleVerifyDialog({
     x402Fetch(`/api/escrows/${escrow.id}/oracle-check`)
       .then(r => {
         if (r.status === 402) {
-          // Payment was attempted (wallet is connected) but the server still
-          // returned 402 — e.g. signature was rejected or settlement failed.
-          throw new Error(
+          throw new Error(decode402Error(
+            r,
             `Payment was rejected or failed. Please try again (costs ${X402_PRICE_LABELS.oracleCheck}).`,
-          );
+          ));
         }
         return r.ok
           ? (r.json() as Promise<OracleCheckResult>)

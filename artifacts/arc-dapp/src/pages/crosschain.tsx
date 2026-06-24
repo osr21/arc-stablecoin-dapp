@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { useWallet } from "../lib/wallet";
 import { formatTokenAmount } from "../lib/format";
-import { buildX402Fetch, X402_PRICE_LABELS } from "../lib/x402-client";
+import { buildX402Fetch, decode402Error, X402_PRICE_LABELS } from "../lib/x402-client";
 import {
   CONTRACT_ADDRESSES, CROSSCHAIN_ESCROW_ABI, ERC20_ABI, DEST_DOMAINS,
   DEST_CHAIN_CONFIGS, MESSAGE_TRANSMITTER_V2_ADDRESS,
@@ -150,10 +150,10 @@ function ReceiveDialog({
       }
       const res = await x402Fetch(`/api/cctp/attestation/${txHash}`);
       if (res.status === 402) {
-        // Payment was attempted but server still returned 402 (rejected or settlement failed).
-        throw new Error(
+        throw new Error(decode402Error(
+          res,
           `Payment was rejected or failed. Please try again (costs ${X402_PRICE_LABELS.attestation}).`,
-        );
+        ));
       }
       if (!res.ok) throw new Error(`Attestation service returned ${res.status}`);
       const data: AttestationResult = await res.json();

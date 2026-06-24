@@ -58,8 +58,26 @@ export function buildX402Middleware(): RequestHandler | null {
   registerFacilitatorScheme(facilitator, { signer, networks: X402_NETWORK });
 
   const facilitatorClient = {
-    verify:       facilitator.verify.bind(facilitator),
-    settle:       facilitator.settle.bind(facilitator),
+    verify: async (...args: Parameters<typeof facilitator.verify>) => {
+      const result = await facilitator.verify(...args);
+      if (!result.isValid) {
+        logger.warn(
+          { invalidReason: result.invalidReason, payer: result.payer },
+          "x402 payment verification failed",
+        );
+      }
+      return result;
+    },
+    settle: async (...args: Parameters<typeof facilitator.settle>) => {
+      const result = await facilitator.settle(...args);
+      if (!result.success) {
+        logger.warn(
+          { errorReason: result.errorReason, payer: result.payer },
+          "x402 payment settlement failed",
+        );
+      }
+      return result;
+    },
     getSupported: () => Promise.resolve(facilitator.getSupported()),
   };
 
