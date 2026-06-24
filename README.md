@@ -1,164 +1,180 @@
 # Arc Stablecoin DApp
 
-> Advanced Circle stablecoin primitives on Arc Testnet — conditional escrow with dispute resolution, cliff + linear payroll vesting, and cross-chain CCTP v2 transfers with a custom TimeLockHook.
+A full-stack decentralized application on **Arc Testnet** (Chain ID: 5042002) demonstrating advanced Circle stablecoin logic — USDC and EURC — across three on-chain primitives.
 
-[![Arc Testnet](https://img.shields.io/badge/Chain-Arc%20Testnet%205042002-blue)](https://testnet.arcscan.app)
-[![CCTP v2](https://img.shields.io/badge/CCTP-v2%20depositForBurnWithHook-orange)](https://github.com/circlefin/evm-cctp-contracts)
-[![USDC + EURC](https://img.shields.io/badge/Tokens-USDC%20%2B%20EURC-green)](https://www.circle.com)
-[![Live Demo](https://img.shields.io/badge/Demo-Live%20on%20Replit-purple)](https://arc-smart-stablecoin-logic.replit.app)
+Live demo: [arc-smart-stablecoin-logic.replit.app](https://arc-smart-stablecoin-logic.replit.app)
+
+---
 
 ## Overview
 
-Three production-grade stablecoin primitives on Arc, built with the full Circle stack (USDC as gas, CCTP v2, EURC). Also introduces two novel Arc patterns: the first CCTP v2 hook deployed on Arc Testnet and a self-hosted auto-release keeper daemon.
+The Arc Stablecoin DApp showcases production-grade stablecoin patterns that teams building on Circle's stack can use as a reference:
 
-| Primitive | What it does |
-|-----------|-------------|
-| **ConditionalEscrow** | Time-based, milestone, or oracle escrow in USDC or EURC. On-chain dispute resolution with named arbiter. Auto-release when time expires. |
-| **PayrollVesting** | Cliff + linear vesting schedules. Employee claims vested tokens; employer can revoke unvested portion. USDC and EURC. |
-| **CrosschainEscrow + TimeLockHook** | Calls CCTP v2 `depositForBurnWithHook()` on Arc. USDC is held by `TimeLockHook` on the destination chain until an unlock timestamp. |
+| Primitive | Contract | What it does |
+|-----------|----------|--------------|
+| **Conditional Escrow** | `ConditionalEscrow.sol` | Time-based, milestone, and oracle-triggered escrows in USDC or EURC with dispute resolution |
+| **Programmable Payroll / Vesting** | `PayrollVesting.sol` | Cliff + linear vesting schedules; employees claim vested USDC; employer can revoke unvested portion |
+| **Cross-chain CCTP v2** | `CrosschainEscrow.sol` | `depositForBurnWithHook()` transfers from Arc to Ethereum Sepolia / Base Sepolia / Arbitrum Sepolia; attestation polling via Circle IRIS |
+| **Time-locked Delivery** | `TimeLockHook.sol` | Destination-chain CCTP hook; holds USDC until `unlockTimestamp`, then lets the recipient `claim()` |
+| **X402 Pay** | EIP-3009 relay | Gasless USDC transfers via `TransferWithAuthorization` — MetaMask signs off-chain, server relays on-chain |
 
-## Key Arc Integrations
-
-- **USDC as gas** — all transactions pay gas in USDC; no ETH required
-- **EURC as first-class currency** — all three contracts support EURC alongside USDC
-- **CCTP v2 `depositForBurnWithHook()`** — first hook implementation on Arc Testnet, live on Ethereum Sepolia and Arbitrum Sepolia
-- **Circle IRIS attestation polling** — API server polls `/v1/attestations/:txHash` to surface crosschain transfer status
-- **Sub-second finality** — Arc's BFT consensus means escrow releases confirm in under 1 second
-
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│  Frontend (React + Vite + shadcn/ui)                             │
-│  MetaMask · Viem · 60s countdown timers · auto-release trigger   │
-└────────────────────────┬─────────────────────────────────────────┘
-                         │ REST API
-┌────────────────────────▼─────────────────────────────────────────┐
-│  Express API Server                                               │
-│  ├── /api/escrows     — CRUD + status                            │
-│  ├── /api/vesting     — schedule management                      │
-│  ├── /api/crosschain  — initiate + track CCTP transfers          │
-│  ├── /api/cctp        — Circle IRIS attestation polling          │
-│  ├── /api/keeper      — auto-release daemon live status          │
-│  └── Keeper daemon    — 60s loop · autoRelease() · USDC gas      │
-└────────────────────────┬─────────────────────────────────────────┘
-                         │ Drizzle ORM
-┌────────────────────────▼─────────────────────────────────────────┐
-│  PostgreSQL                                                       │
-└──────────────────────────────────────────────────────────────────┘
-                         │ viem writeContract / Foundry
-┌────────────────────────▼─────────────────────────────────────────┐
-│  Arc Testnet (Chain ID 5042002)                                   │
-│  ├── ConditionalEscrow  0x935e53ddd824f4fc9321ba94e70161f20c23ad04│
-│  ├── PayrollVesting     0x9b96be4a489656b01d2922b1bea9c932ed258215│
-│  └── CrosschainEscrow  0xfc3d201a3fd1ba72855ab7814dce36c43ea9f0de│
-└──────────────────────────────────────────────────────────────────┘
-                         │ CCTP v2 depositForBurnWithHook
-┌────────────────────────▼─────────────────────────────────────────┐
-│  Destination Chains                                               │
-│  ├── TimeLockHook (Eth Sepolia)  0x22f2ea9050a25da1c24caa76558a65aecc4adf4c │
-│  └── TimeLockHook (Arb Sepolia)  0x0e250b6b417e5b31c7f4bcc8a00352d0672474ad │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-## Novel Patterns for Arc Builders
-
-### 1. CCTP v2 TimeLockHook (first on Arc)
-
-`TimeLockHook.sol` is a reusable destination hook for CCTP v2. The sender burns USDC on Arc with `mintRecipient = address(TimeLockHook)`. After Circle attests, anyone calls `relay()` which mints USDC into the hook and stores a `PendingRelease`. The recipient calls `claim()` after the unlock timestamp.
-
-```
-Arc: CrosschainEscrow.initiateConditionalTransfer()
-  → TokenMessengerV2.depositForBurnWithHook(mintRecipient=TimeLockHook, ...)
-  → Circle IRIS: poll /v1/attestations/:txHash until status=complete
-  → TimeLockHook.relay(message, attestation, recipient, unlockTs)
-  → TimeLockHook.claim(releaseId)   ← recipient only, after unlock
-```
-
-MessageTransmitterV2 is at the same CREATE2 address on all CCTP v2 chains: `0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275`
-
-### 2. Self-Hosted Auto-Release Keeper
-
-A server-side Node.js daemon calls `autoRelease()` every 60 seconds on expired escrows. No Chainlink, no Gelato. Arc's predictable USDC gas makes this economical.
-
-- Reads `contractAddress` per-row from DB (handles contracts across deployments)
-- Persists `onChainId` lazily from `EscrowCreated` event in tx receipts
-- 10-minute backoff after 3 failures — prevents gas waste on broken escrows
-- Live status at `GET /api/keeper/status`
+---
 
 ## Deployed Contracts
 
-| Contract | Chain | Address |
-|----------|-------|---------|
-| ConditionalEscrow | Arc Testnet | `0x935e53ddd824f4fc9321ba94e70161f20c23ad04` |
-| PayrollVesting | Arc Testnet | `0x9b96be4a489656b01d2922b1bea9c932ed258215` |
-| CrosschainEscrow | Arc Testnet | `0xfc3d201a3fd1ba72855ab7814dce36c43ea9f0de` |
-| TimeLockHook v6 | Ethereum Sepolia | `0x22f2ea9050a25da1c24caa76558a65aecc4adf4c` |
-| TimeLockHook v6 | Arbitrum Sepolia | `0x0e250b6b417e5b31c7f4bcc8a00352d0672474ad` |
+### Arc Testnet (Chain ID 5042002)
+
+| Contract | Address | Explorer |
+|----------|---------|---------|
+| `ConditionalEscrow` | [`0x34733fbbC101F2244Df03508170893013528004e`](https://testnet.arcscan.app/address/0x34733fbbC101F2244Df03508170893013528004e) | ArcScan |
+| `PayrollVesting` | [`0x113F24249b0521d7288E52D12AE869d5903E6143`](https://testnet.arcscan.app/address/0x113F24249b0521d7288E52D12AE869d5903E6143) | ArcScan |
+| `CrosschainEscrow` | [`0x1e0AaD16aaBFe906987D70A00783E9ab67954aFF`](https://testnet.arcscan.app/address/0x1e0AaD16aaBFe906987D70A00783E9ab67954aFF) | ArcScan |
+
+### Destination Chains (TimeLockHook v6)
+
+| Chain | Address | Explorer |
+|-------|---------|---------|
+| Ethereum Sepolia | [`0x22f2ea9050a25da1c24caa76558a65aecc4adf4c`](https://eth-sepolia.blockscout.com/address/0x22f2ea9050a25da1c24caa76558a65aecc4adf4c) | Blockscout |
+| Arbitrum Sepolia | [`0x0e250b6b417e5b31c7f4bcc8a00352d0672474ad`](https://arbitrum-sepolia.blockscout.com/address/0x0e250b6b417e5b31c7f4bcc8a00352d0672474ad) | Blockscout |
+| Base Sepolia | *Not deployed — deployer wallet needs Base Sepolia ETH* | — |
+
+> All contracts are source-verified. Security audit completed June 2026 — see [docs/security-audit.md](docs/security-audit.md).
+
+---
 
 ## Arc Testnet Reference
 
 | Item | Value |
 |------|-------|
-| Chain ID | 5042002 |
+| Chain ID | `5042002` |
 | RPC | `https://rpc.testnet.arc.network` |
-| Explorer | `https://testnet.arcscan.app` |
-| USDC | `0x3600000000000000000000000000000000000000` |
+| Block Explorer | `https://testnet.arcscan.app` |
+| USDC (native gas token) | `0x3600000000000000000000000000000000000000` |
 | EURC | `0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a` |
-| CCTP Domain ID | 26 |
+| CCTP Domain ID | `26` |
 | TokenMessengerV2 | `0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA` |
-| minFinalityThreshold | 2000 |
-| Faucet | `https://faucet.circle.com` |
+| MessageTransmitterV2 | `0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275` |
+| `minFinalityThreshold` | `2000` |
+| Testnet Faucet | `https://faucet.circle.com` |
 
-## Quick Start
-
-```bash
-pnpm install
-
-# Set DATABASE_URL, DEPLOYER_PRIVATE_KEY, SESSION_SECRET in your environment
-
-pnpm --filter @workspace/db run push        # create tables
-pnpm --filter @workspace/api-server run dev  # API on :8080 → /api
-pnpm --filter @workspace/arc-dapp run dev    # Frontend → /
-```
-
-Connect MetaMask to Arc Testnet (Chain ID 5042002, RPC `https://rpc.testnet.arc.network`). Get testnet USDC from `https://faucet.circle.com`.
-
-## Redeploy
-
-```bash
-# Core contracts on Arc
-cd contracts && forge script script/Deploy.s.sol:Deploy \
-  --rpc-url https://rpc.testnet.arc.network \
-  --private-key "$DEPLOYER_PRIVATE_KEY" \
-  --broadcast --config-path foundry.toml
-
-# TimeLockHook on a destination chain
-cd contracts && forge script script/DeployTimeLockHook.s.sol:DeployTimeLockHook \
-  --rpc-url <destination-rpc> \
-  --private-key "$DEPLOYER_PRIVATE_KEY" \
-  --broadcast --config-path foundry.toml
-```
-
-## Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 19 + Vite + Tailwind CSS + shadcn/ui + Wouter |
-| Wallet | MetaMask via viem |
-| API | Express 5 + Pino |
-| Database | PostgreSQL + Drizzle ORM |
-| Validation | Zod from Orval OpenAPI codegen |
-| Contracts | Solidity 0.8.20 + Foundry |
-| Cross-chain | CCTP v2 · Arc domain 26 |
-
-## Related Arc Projects
-
-- [arc-escrow](https://github.com/circlefin/arc-escrow) — AI-validated freelance escrow
-- [arc-commerce](https://github.com/circlefin/arc-commerce) — USDC checkout
-- [arc-fintech](https://github.com/circlefin/arc-fintech) — Multichain treasury
-- [evm-cctp-contracts](https://github.com/circlefin/evm-cctp-contracts) — CCTP v2 contracts
+> **Note:** USDC on Arc is also the native gas token. The ERC-20 address above is used for smart contract interactions; wallets display the native balance directly.
 
 ---
 
-[Live demo](https://arc-smart-stablecoin-logic.replit.app) · [Arc docs](https://docs.arc.io) · [Circle faucet](https://faucet.circle.com)
+## Features
+
+### Dashboard
+- Live system stats: total escrows, vesting schedules, USDC/EURC locked
+- Recent activity feed with on-chain links
+- API health indicator
+
+### Escrow
+- Create escrows with three condition types: **Time-based**, **Milestone**, **Oracle-triggered**
+- Choose USDC or EURC; raise disputes; arbiter resolves with release or refund
+- Full lifecycle: `pending → active → complete / disputed → resolved`
+
+### Vesting / Payroll
+- Employer creates cliff + linear vesting schedules
+- Employee claims vested tokens on-demand
+- Employer can revoke unvested portion at any time
+
+### Cross-chain Transfers (CCTP v2)
+- Initiate `depositForBurnWithHook()` from Arc Testnet to Ethereum / Base / Arbitrum Sepolia
+- Attestation polling via Circle IRIS bridge
+- Self-relay `receiveMessage()` via MetaMask on the destination chain
+
+### X402 Pay (EIP-3009)
+- Gasless USDC send: MetaMask signs a `TransferWithAuthorization` typed message off-chain
+- Server relay submits the `transferWithAuthorization()` call and pays gas
+- Session-local transaction history with ArcScan links
+
+### TimeLockHook (destination chains)
+- Deployed on Ethereum Sepolia and Arbitrum Sepolia
+- Holds CCTP-bridged USDC until `unlockTimestamp`; recipient calls `claim(releaseId)`
+
+---
+
+## Security
+
+A full security audit was conducted across all four contracts in June 2026. Five vulnerabilities were identified and patched:
+
+| ID | Severity | Summary |
+|----|----------|---------|
+| SA-01 | 🔴 Critical | Beneficiary could drain escrow immediately via `release()` |
+| SA-02 | 🔴 Critical | Vested-but-unclaimed tokens permanently locked on revoke |
+| SA-03 | 🟠 High | Arbiter could be set to beneficiary (collusion) |
+| SA-04 | 🟡 Medium | Zero-address recipient permanently locks USDC in TimeLockHook |
+| SA-05 | 🟢 Low | `emit Released` fired before external transfer in TimeLockHook |
+
+All findings are patched and contracts redeployed. See [docs/security-audit.md](docs/security-audit.md) for full details.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 19, Vite, Tailwind CSS, shadcn/ui, Wouter |
+| Wallet | viem, MetaMask (EIP-1193) |
+| API | Express 5, Pino logging |
+| Database | PostgreSQL + Drizzle ORM |
+| Validation | Zod v4, drizzle-zod |
+| API contracts | OpenAPI spec → Orval codegen (React Query hooks + Zod schemas) |
+| Smart contracts | Solidity 0.8.20, Foundry |
+| Monorepo | pnpm workspaces, Node.js 24, TypeScript 5.9 |
+
+---
+
+## Architecture
+
+```
+Browser (React + viem)
+    │
+    ├─── /api  ──→  Express API Server
+    │                   │
+    │                   ├─ /escrows, /vesting, /crosschain  → PostgreSQL (Drizzle ORM)
+    │                   ├─ /cctp/attestation/:txHash        → Circle IRIS bridge
+    │                   └─ /x402/send                       → USDC transferWithAuthorization
+    │
+    └─── MetaMask (EIP-1193)
+             │
+             ├─ Arc Testnet (Chain 5042002)
+             │       ├─ ConditionalEscrow.sol
+             │       ├─ PayrollVesting.sol
+             │       └─ CrosschainEscrow.sol → TokenMessengerV2.depositForBurnWithHook()
+             │
+             └─ Destination Chain (Sepolia / Arbitrum Sepolia)
+                     ├─ MessageTransmitterV2.receiveMessage()
+                     └─ TimeLockHook.sol → recipient claim(releaseId)
+```
+
+---
+
+## Local Development
+
+```bash
+git clone https://github.com/osr21/arc-stablecoin-dapp.git
+cd arc-stablecoin-dapp
+pnpm install
+
+# Set DATABASE_URL, SESSION_SECRET, DEPLOYER_PRIVATE_KEY in .env
+pnpm --filter @workspace/db run push
+
+# Two terminals:
+pnpm --filter @workspace/api-server run dev   # API → :8080
+pnpm --filter @workspace/arc-dapp run dev     # Frontend → :22967
+```
+
+Add Arc Testnet to MetaMask: RPC `https://rpc.testnet.arc.network`, Chain ID `5042002`, symbol `USDC`. Get testnet funds at [faucet.circle.com](https://faucet.circle.com).
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for full release history.
+
+---
+
+## License
+
+MIT
