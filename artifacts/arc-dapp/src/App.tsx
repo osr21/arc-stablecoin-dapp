@@ -9,6 +9,7 @@ import Dashboard from "./pages/dashboard";
 import Escrow from "./pages/escrow";
 import Vesting from "./pages/vesting";
 import Crosschain from "./pages/crosschain";
+import X402Pay from "./pages/x402pay";
 import Contracts from "./pages/contracts";
 import Architecture from "./pages/architecture";
 import Integrations from "./pages/integrations";
@@ -24,6 +25,7 @@ function Router() {
         <Route path="/escrow" component={Escrow} />
         <Route path="/vesting" component={Vesting} />
         <Route path="/crosschain" component={Crosschain} />
+        <Route path="/x402pay" component={X402Pay} />
         <Route path="/contracts" component={Contracts} />
         <Route path="/architecture" component={Architecture} />
         <Route path="/integrations" component={Integrations} />

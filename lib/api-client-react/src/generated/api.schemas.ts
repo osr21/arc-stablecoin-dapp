@@ -348,6 +348,41 @@ export interface ActivityItem {
   metadata?: string | null;
 }
 
+export interface X402TransferAuth {
+  /** Sender address (must match the EIP-712 signer) */
+  from: string;
+  /** Recipient address */
+  to: string;
+  /** Amount in raw USDC base units (6 decimals), e.g. "10000" = 0.01 USDC */
+  value: string;
+  /** Unix timestamp (seconds) — authorization not valid before this time */
+  validAfter: string;
+  /** Unix timestamp (seconds) — authorization expires at this time */
+  validBefore: string;
+  /** Unique 32-byte hex nonce for the authorization */
+  nonce: string;
+  /** 65-byte EIP-712 signature (r+s+v) from MetaMask eth_signTypedData_v4 */
+  signature: string;
+}
+
+export type X402TransferReceiptStatus = typeof X402TransferReceiptStatus[keyof typeof X402TransferReceiptStatus];
+
+
+export const X402TransferReceiptStatus = {
+  success: 'success',
+} as const;
+
+export interface X402TransferReceipt {
+  /** On-chain transaction hash of the transferWithAuthorization call */
+  txHash: string;
+  from: string;
+  to: string;
+  /** Amount transferred in raw base units */
+  value: string;
+  blockNumber: string;
+  status: X402TransferReceiptStatus;
+}
+
 export type ListEscrowsParams = {
 /**
  * Filter by depositor or beneficiary address

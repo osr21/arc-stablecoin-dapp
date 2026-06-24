@@ -37,7 +37,9 @@ import type {
   ListVestingSchedulesParams,
   VestingClaimInput,
   VestingSchedule,
-  VestingScheduleInput
+  VestingScheduleInput,
+  X402TransferAuth,
+  X402TransferReceipt
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -1354,4 +1356,79 @@ export function useGetDashboardActivity<TData = Awaited<ReturnType<typeof getDas
 
 
 
+
+export const getX402SendUrl = () => {
+
+
+
+
+  return `/api/x402/send`
+}
+
+/**
+ * Accepts a MetaMask-signed EIP-3009 TransferWithAuthorization and submits
+the transferWithAuthorization call to the USDC contract on Arc Testnet.
+The server wallet pays gas; the signer pays no ETH.
+
+ * @summary Send USDC via EIP-3009
+ */
+export const x402Send = async (x402TransferAuth: X402TransferAuth, options?: RequestInit): Promise<X402TransferReceipt> => {
+
+  return customFetch<X402TransferReceipt>(getX402SendUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      x402TransferAuth,)
+  }
+);}
+
+
+
+
+export const getX402SendMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof x402Send>>, TError,{data: BodyType<X402TransferAuth>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof x402Send>>, TError,{data: BodyType<X402TransferAuth>}, TContext> => {
+
+const mutationKey = ['x402Send'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof x402Send>>, {data: BodyType<X402TransferAuth>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  x402Send(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type X402SendMutationResult = NonNullable<Awaited<ReturnType<typeof x402Send>>>
+    export type X402SendMutationBody = BodyType<X402TransferAuth>
+    export type X402SendMutationError = ErrorType<void>
+
+    /**
+ * @summary Send USDC via EIP-3009
+ */
+export const useX402Send = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof x402Send>>, TError,{data: BodyType<X402TransferAuth>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof x402Send>>,
+        TError,
+        {data: BodyType<X402TransferAuth>},
+        TContext
+      > => {
+      return useMutation(getX402SendMutationOptions(options));
+    }
 

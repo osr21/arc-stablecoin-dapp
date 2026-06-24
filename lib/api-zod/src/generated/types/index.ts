@@ -41,3 +41,6 @@ export * from './vestingSchedule';
 export * from './vestingScheduleInput';
 export * from './vestingScheduleInputToken';
 export * from './vestingScheduleToken';
+export * from './x402TransferAuth';
+export * from './x402TransferReceipt';
+export * from './x402TransferReceiptStatus';

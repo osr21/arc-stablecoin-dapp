@@ -20,6 +20,8 @@ tags:
     description: Dashboard stats and activity feed
   - name: cctp
     description: Circle CCTP attestation proxy
+  - name: x402
+    description: Gasless USDC transfers via EIP-3009 TransferWithAuthorization
 
 paths:
   /healthz:
@@ -399,6 +401,35 @@ paths:
                 items:
                   $ref: "#/components/schemas/ActivityItem"
 
+  /x402/send:
+    post:
+      operationId: x402Send
+      tags: [x402]
+      summary: Send USDC via EIP-3009
+      description: |
+        Accepts a MetaMask-signed EIP-3009 TransferWithAuthorization and submits
+        the transferWithAuthorization call to the USDC contract on Arc Testnet.
+        The server wallet pays gas; the signer pays no ETH.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/X402TransferAuth"
+      responses:
+        "200":
+          description: Transfer confirmed on-chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/X402TransferReceipt"
+        "400":
+          description: Invalid request body
+        "422":
+          description: Transaction reverted on-chain
+        "503":
+          description: Payment relay not configured
+
 components:
   schemas:
     HealthStatus:
@@ -749,3 +780,49 @@ components:
         metadata:
           type: ["string", "null"]
           description: JSON-encoded additional metadata
+
+    X402TransferAuth:
+      type: object
+      required: [from, to, value, validAfter, validBefore, nonce, signature]
+      properties:
+        from:
+          type: string
+          description: Sender address (must match the EIP-712 signer)
+        to:
+          type: string
+          description: Recipient address
+        value:
+          type: string
+          description: Amount in raw USDC base units (6 decimals), e.g. "10000" = 0.01 USDC
+        validAfter:
+          type: string
+          description: Unix timestamp (seconds) — authorization not valid before this time
+        validBefore:
+          type: string
+          description: Unix timestamp (seconds) — authorization expires at this time
+        nonce:
+          type: string
+          description: Unique 32-byte hex nonce for the authorization
+        signature:
+          type: string
+          description: 65-byte EIP-712 signature (r+s+v) from MetaMask eth_signTypedData_v4
+
+    X402TransferReceipt:
+      type: object
+      required: [txHash, from, to, value, blockNumber, status]
+      properties:
+        txHash:
+          type: string
+          description: On-chain transaction hash of the transferWithAuthorization call
+        from:
+          type: string
+        to:
+          type: string
+        value:
+          type: string
+          description: Amount transferred in raw base units
+        blockNumber:
+          type: string
+        status:
+          type: string
+          enum: [success]

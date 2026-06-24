@@ -437,3 +437,30 @@ export const GetDashboardActivityResponseItem = zod.object({
 export const GetDashboardActivityResponse = zod.array(GetDashboardActivityResponseItem)
 
 
+/**
+ * Accepts a MetaMask-signed EIP-3009 TransferWithAuthorization and submits
+the transferWithAuthorization call to the USDC contract on Arc Testnet.
+The server wallet pays gas; the signer pays no ETH.
+
+ * @summary Send USDC via EIP-3009
+ */
+export const X402SendBody = zod.object({
+  "from": zod.string().describe('Sender address (must match the EIP-712 signer)'),
+  "to": zod.string().describe('Recipient address'),
+  "value": zod.string().describe('Amount in raw USDC base units (6 decimals), e.g. \"10000\" = 0.01 USDC'),
+  "validAfter": zod.string().describe('Unix timestamp (seconds) — authorization not valid before this time'),
+  "validBefore": zod.string().describe('Unix timestamp (seconds) — authorization expires at this time'),
+  "nonce": zod.string().describe('Unique 32-byte hex nonce for the authorization'),
+  "signature": zod.string().describe('65-byte EIP-712 signature (r+s+v) from MetaMask eth_signTypedData_v4')
+})
+
+export const X402SendResponse = zod.object({
+  "txHash": zod.string().describe('On-chain transaction hash of the transferWithAuthorization call'),
+  "from": zod.string(),
+  "to": zod.string(),
+  "value": zod.string().describe('Amount transferred in raw base units'),
+  "blockNumber": zod.string(),
+  "status": zod.enum(['success'])
+})
+
+

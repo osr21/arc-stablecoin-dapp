@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, ShieldCheck, Clock, ArrowLeftRight, FileCode2, LayoutDashboard, Wallet, Component, AlertTriangle, Puzzle } from "lucide-react";
+import { Activity, ShieldCheck, Clock, ArrowLeftRight, FileCode2, LayoutDashboard, Wallet, Component, AlertTriangle, Puzzle, Zap } from "lucide-react";
 import { useWallet } from "../lib/wallet";
 import { Button } from "./ui/button";
 
@@ -8,6 +8,7 @@ const navItems = [
   { href: "/escrow", label: "Escrow", icon: ShieldCheck },
   { href: "/vesting", label: "Vesting", icon: Clock },
   { href: "/crosschain", label: "Cross-chain", icon: ArrowLeftRight },
+  { href: "/x402pay", label: "X402 Pay", icon: Zap },
   { href: "/contracts", label: "Contracts", icon: FileCode2 },
   { href: "/architecture", label: "Architecture", icon: Component },
   { href: "/integrations", label: "Integrations", icon: Puzzle },
