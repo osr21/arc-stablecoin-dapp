@@ -77,6 +77,13 @@ export function buildX402Middleware(): RequestHandler | null {
   });
   resourceServer.register(X402_NETWORK, serverScheme);
 
+  // Arc Testnet USDC EIP-712 domain (read from 0x3600...0000 via eth_call):
+  //   name()    → "USDC"
+  //   version() → "2"
+  // The x402 exact client reads extra.name + extra.version to construct the
+  // EIP-712 domain for the TransferWithAuthorization typed-data signature.
+  const arcUsdcExtra = { name: "USDC", version: "2" };
+
   const routes = {
     "GET /api/escrows/:id/oracle-check": {
       description: "CoinGecko price oracle check — 0.01 USDC per call",
@@ -86,6 +93,7 @@ export function buildX402Middleware(): RequestHandler | null {
         payTo:             account.address,
         price:             "$0.01",
         maxTimeoutSeconds: 60,
+        extra:             arcUsdcExtra,
       }],
     },
     "GET /api/cctp/attestation/:txHash": {
@@ -96,6 +104,7 @@ export function buildX402Middleware(): RequestHandler | null {
         payTo:             account.address,
         price:             "$0.05",
         maxTimeoutSeconds: 60,
+        extra:             arcUsdcExtra,
       }],
     },
   };
