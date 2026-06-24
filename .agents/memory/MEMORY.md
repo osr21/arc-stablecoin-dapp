@@ -2,3 +2,4 @@
 - [Keeper contract allowlist](keeper-allowlist.md) — keeper.ts has ALLOWED_CONTRACTS Set; update it whenever ConditionalEscrow is redeployed to a new address
 - [ArcScan contract verification](arcscan-verification.md) — how to verify Arc Testnet contracts on ArcScan; note on source/bytecode divergence between deployed and current code.
 - [x402 Arc Testnet integration](x402-arc-testnet.md) — in-process facilitator on Arc Testnet; EIP-3009 exact scheme; custom money parser required for Arc USDC.
+- [x402 verifyTypedData missing](x402-verify-typed-data.md) — combinedSigner must include verifyTypedData or all x402 payments silently fail signature check

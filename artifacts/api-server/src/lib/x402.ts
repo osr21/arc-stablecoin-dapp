@@ -45,6 +45,7 @@ export function buildX402Middleware(): RequestHandler | null {
   const combinedSigner = {
     address:                   account.address,
     signTypedData:             (args: any) => walletClient.signTypedData({ account, ...args } as any),
+    verifyTypedData:           (args: any) => publicClient.verifyTypedData(args as any),
     writeContract:             (args: any) => walletClient.writeContract({ account, ...args } as any),
     waitForTransactionReceipt: (args: any) => publicClient.waitForTransactionReceipt(args),
     getLogs:                   (args: any) => publicClient.getLogs(args as any),
