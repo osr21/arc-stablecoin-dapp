@@ -31,9 +31,13 @@ export function buildX402Fetch(walletAddress: `0x${string}`): typeof globalThis.
     }) => {
       const eth = (window as any).ethereum;
       if (!eth) throw new Error("MetaMask not found");
+      // BigInt values (value, validAfter, validBefore) must be serialized as
+      // decimal strings for eth_signTypedData_v4 — JSON.stringify rejects BigInt.
+      const replacer = (_: string, v: unknown) =>
+        typeof v === "bigint" ? v.toString() : v;
       return eth.request({
         method: "eth_signTypedData_v4",
-        params: [walletAddress, JSON.stringify(message)],
+        params: [walletAddress, JSON.stringify(message, replacer)],
       }) as Promise<`0x${string}`>;
     },
   };
