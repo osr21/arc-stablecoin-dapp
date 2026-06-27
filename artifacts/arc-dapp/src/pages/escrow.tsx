@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useListEscrows, useCreateEscrow, useDisputeEscrow, useReleaseEscrow, getListEscrowsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -12,7 +12,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useWallet } from "../lib/wallet";
 import { formatTokenAmount, parseTokenAmount } from "../lib/format";
-import { buildX402Fetch, decode402Error, X402_PRICE_LABELS } from "../lib/x402-client";
 import {
   CONTRACT_ADDRESSES, CONDITIONAL_ESCROW_ABI, ERC20_ABI,
   parseToken, ARC_TESTNET,
@@ -118,42 +117,26 @@ function OracleVerifyDialog({
   const [confirmText, setConfirmText] = useState("");
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const { address: walletAddress } = useWallet();
-  const x402Fetch = useMemo(
-    () => (walletAddress ? buildX402Fetch(walletAddress) : null),
-    [walletAddress],
-  );
-
   const isMilestone = escrow?.conditionType === "milestone";
   let condData: Record<string, string> = {};
   try { condData = JSON.parse(escrow?.conditionData ?? "{}") as Record<string, string>; } catch {}
 
   useEffect(() => {
     if (!open || !escrow || isMilestone) return;
-    // Skip auto-fetch when no wallet is connected — x402Fetch is null and a plain
-    // fetch would immediately receive HTTP 402.  The effect re-runs automatically
-    // once the wallet hydrates and x402Fetch becomes non-null.
-    if (!x402Fetch) return;
     setResult(null);
     setFetchError(null);
     setConfirmText("");
     setLoading(true);
-    x402Fetch(`/api/escrows/${escrow.id}/oracle-check`)
-      .then(r => {
-        if (r.status === 402) {
-          throw new Error(decode402Error(
-            r,
-            `Payment was rejected or failed. Please try again (costs ${X402_PRICE_LABELS.oracleCheck}).`,
-          ));
-        }
-        return r.ok
+    fetch(`/api/escrows/${escrow.id}/oracle-check`)
+      .then(r =>
+        r.ok
           ? (r.json() as Promise<OracleCheckResult>)
-          : (r.json() as Promise<{ error: string }>).then(e => Promise.reject(new Error(e.error ?? "Unknown error")));
-      })
+          : (r.json() as Promise<{ error: string }>).then(e => Promise.reject(new Error(e.error ?? "Unknown error"))),
+      )
       .then(data => setResult(data))
       .catch((err: Error) => setFetchError(err.message))
       .finally(() => setLoading(false));
-  }, [open, escrow?.id, isMilestone, x402Fetch]);
+  }, [open, escrow?.id, isMilestone]);
 
   const canRelease = () => {
     if (isMilestone) return confirmText.trim().toUpperCase() === "CONFIRMED";
@@ -183,20 +166,9 @@ function OracleVerifyDialog({
             </div>
           )}
 
-          {!isMilestone && !x402Fetch && !loading && !result && !fetchError && (
-            <div className="rounded-lg border border-border p-3 bg-muted/20 text-sm text-muted-foreground space-y-1">
-              <p className="font-medium text-foreground">Wallet required</p>
-              <p>
-                This oracle check costs <span className="font-mono text-foreground">{X402_PRICE_LABELS.oracleCheck}</span> per
-                call, paid automatically via x402. Connect your MetaMask wallet
-                (Arc Testnet, Chain ID 5042002) using the button in the header.
-              </p>
-            </div>
-          )}
-
           {!isMilestone && loading && (
             <div className="text-center py-6 text-muted-foreground text-sm animate-pulse">
-              Querying oracle… paying {X402_PRICE_LABELS.oracleCheck} via MetaMask
+              Querying oracle…
             </div>
           )}
 

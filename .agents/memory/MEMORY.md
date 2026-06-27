@@ -1,2 +1,2 @@
-- [Viem writeContract chain null](viem-writecontract-chain-null.md) — pass `chain: null` when walletClient chain is typed as `any` or cast, or TypeScript demands it explicitly.
-- [Orval Zod schema naming collision](orval-schema-naming.md) — if a component schema name matches the operationId+Body pattern, orval generates duplicate exports; rename the schema to avoid it.
+- [CCTP v2 depositForBurn](cctp-v2-interface.md) — v2 does NOT return nonce; nonce emitted in DepositForBurn event only
+- [Atomic HTLC CCTP deploy](atomic-htlc-cctp.md) — CrosschainAtomicHTLC on Arc + SimpleHTLC on Sepolia addresses and protocol

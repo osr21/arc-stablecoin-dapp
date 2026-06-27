@@ -70,28 +70,6 @@ export function buildX402Middleware(): RequestHandler | null {
 
   const facilitatorClient = {
     verify: async (...args: Parameters<typeof facilitator.verify>) => {
-      // Temporarily log the raw payload for debugging EIP-712 signature mismatches
-      try {
-        const rawPayload = args[0];
-        const accepted = (rawPayload as any)?.accepted;
-        if (accepted?.payload) {
-          const decoded = JSON.parse(Buffer.from(accepted.payload, "base64").toString());
-          logger.info(
-            {
-              authorization: decoded?.payload?.authorization,
-              signatureHex: (decoded?.payload?.signature as string)?.slice(0, 10) + "…",
-              domain: {
-                name:              args[1]?.extra?.name,
-                version:           args[1]?.extra?.version,
-                chainId:           (args[1]?.network as string)?.split(":")?.[1],
-                verifyingContract: args[1]?.asset,
-              },
-            },
-            "x402 verify: authorization payload (debug)",
-          );
-        }
-      } catch { /* ignore diagnostic errors */ }
-
       const result = await facilitator.verify(...args);
       if (!result.isValid) {
         logger.warn(
@@ -135,35 +113,10 @@ export function buildX402Middleware(): RequestHandler | null {
   // EIP-712 domain for the TransferWithAuthorization typed-data signature.
   const arcUsdcExtra = { name: "USDC", version: "2" };
 
-  const routes = {
-    "GET /api/escrows/:id/oracle-check": {
-      description: "CoinGecko price oracle check — 0.01 USDC per call",
-      accepts: [{
-        scheme:            "exact",
-        network:           X402_NETWORK,
-        payTo:             account.address,
-        price:             "$0.01",
-        maxTimeoutSeconds: 60,
-        extra:             arcUsdcExtra,
-      }],
-    },
-    "GET /api/cctp/attestation/:txHash": {
-      description: "Circle IRIS CCTP attestation poll — 0.05 USDC per call",
-      accepts: [{
-        scheme:            "exact",
-        network:           X402_NETWORK,
-        payTo:             account.address,
-        price:             "$0.05",
-        maxTimeoutSeconds: 60,
-        extra:             arcUsdcExtra,
-      }],
-    },
-  };
-
-  logger.info(
-    { recipient: account.address, network: X402_NETWORK, routes: Object.keys(routes) },
-    "x402 payment middleware enabled",
-  );
-
-  return paymentMiddleware(routes as any, resourceServer) as unknown as RequestHandler;
+  // x402 payment-gated routes have been moved to the dedicated /api/x402 feature.
+  // Oracle-check and CCTP attestation are now free endpoints.
+  // Return null so no middleware is registered — the x402pay route (/api/x402/send)
+  // is a direct Express route and does not need this middleware.
+  logger.info("x402 payment middleware disabled — no gated routes configured");
+  return null;
 }

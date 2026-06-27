@@ -9,10 +9,15 @@ import Dashboard from "./pages/dashboard";
 import Escrow from "./pages/escrow";
 import Vesting from "./pages/vesting";
 import Crosschain from "./pages/crosschain";
+import Batch from "./pages/batch";
 import X402Pay from "./pages/x402pay";
 import Contracts from "./pages/contracts";
 import Architecture from "./pages/architecture";
 import Integrations from "./pages/integrations";
+import FxForward from "./pages/fx-forward";
+import HtlcSwap from "./pages/htlc";
+import AgentRegistry from "./pages/agents";
+import SplitPayment from "./pages/splits";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient();
@@ -25,10 +30,15 @@ function Router() {
         <Route path="/escrow" component={Escrow} />
         <Route path="/vesting" component={Vesting} />
         <Route path="/crosschain" component={Crosschain} />
+        <Route path="/batch" component={Batch} />
         <Route path="/x402pay" component={X402Pay} />
         <Route path="/contracts" component={Contracts} />
         <Route path="/architecture" component={Architecture} />
         <Route path="/integrations" component={Integrations} />
+        <Route path="/fx-forward" component={FxForward} />
+        <Route path="/htlc" component={HtlcSwap} />
+        <Route path="/agents" component={AgentRegistry} />
+        <Route path="/splits" component={SplitPayment} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

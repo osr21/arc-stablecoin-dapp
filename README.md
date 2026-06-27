@@ -1,6 +1,6 @@
 # Arc Stablecoin DApp
 
-A full-stack decentralized application on **Arc Testnet** (Chain ID: 5042002) demonstrating advanced Circle stablecoin logic — USDC and EURC — across four on-chain primitives.
+A full-stack decentralized application on **Arc Testnet** (Chain ID: 5042002) demonstrating advanced Circle stablecoin logic — USDC and EURC — across three on-chain primitives.
 
 Live demo: [arc-smart-stablecoin-logic.replit.app](https://arc-smart-stablecoin-logic.replit.app)
 
@@ -15,7 +15,6 @@ The Arc Stablecoin DApp showcases production-grade stablecoin patterns that team
 | **Conditional Escrow** | `ConditionalEscrow.sol` | Time-based, milestone, and oracle-triggered escrows in USDC or EURC with dispute resolution |
 | **Programmable Payroll / Vesting** | `PayrollVesting.sol` | Cliff + linear vesting schedules; employees claim vested USDC; employer can revoke unvested portion |
 | **Cross-chain CCTP v2** | `CrosschainEscrow.sol` | `depositForBurnWithHook()` transfers from Arc to Ethereum Sepolia / Base Sepolia / Arbitrum Sepolia; attestation polling via Circle IRIS |
-| **Batch Transfer** | `BatchTransfer.sol` | Send USDC or EURC to many recipients in one on-chain call — 2 confirmations regardless of recipient count; optional memo stored in event log |
 | **Time-locked Delivery** | `TimeLockHook.sol` | Destination-chain CCTP hook; holds USDC until `unlockTimestamp`, then lets the recipient `claim()` |
 | **X402 Pay** | EIP-3009 relay | Gasless USDC transfers via `TransferWithAuthorization` — MetaMask signs off-chain, server relays on-chain |
 
@@ -30,7 +29,6 @@ The Arc Stablecoin DApp showcases production-grade stablecoin patterns that team
 | `ConditionalEscrow` | [`0x34733fbbC101F2244Df03508170893013528004e`](https://testnet.arcscan.app/address/0x34733fbbC101F2244Df03508170893013528004e) | ArcScan |
 | `PayrollVesting` | [`0x113F24249b0521d7288E52D12AE869d5903E6143`](https://testnet.arcscan.app/address/0x113F24249b0521d7288E52D12AE869d5903E6143) | ArcScan |
 | `CrosschainEscrow` | [`0x1e0AaD16aaBFe906987D70A00783E9ab67954aFF`](https://testnet.arcscan.app/address/0x1e0AaD16aaBFe906987D70A00783E9ab67954aFF) | ArcScan |
-| `BatchTransfer` ✓ | [`0x76d5dd51ad28D607cD8804dc5230cAE93403eD3d`](https://testnet.arcscan.app/address/0x76d5dd51ad28D607cD8804dc5230cAE93403eD3d) | ArcScan |
 
 ### Destination Chains (TimeLockHook v6)
 
@@ -40,7 +38,7 @@ The Arc Stablecoin DApp showcases production-grade stablecoin patterns that team
 | Arbitrum Sepolia | [`0x0e250b6b417e5b31c7f4bcc8a00352d0672474ad`](https://arbitrum-sepolia.blockscout.com/address/0x0e250b6b417e5b31c7f4bcc8a00352d0672474ad) | Blockscout |
 | Base Sepolia | *Not deployed — deployer wallet needs Base Sepolia ETH* | — |
 
-> All contracts are source-verified. ✓ marks contracts with full ABI verification (events and function calls fully decoded on ArcScan).
+> All contracts are source-verified. Security audit completed June 2026 — see [docs/security-audit.md](docs/security-audit.md).
 
 ---
 
@@ -61,8 +59,6 @@ The Arc Stablecoin DApp showcases production-grade stablecoin patterns that team
 
 > **Note:** USDC on Arc is also the native gas token. The ERC-20 address above is used for smart contract interactions; wallets display the native balance directly.
 
-> **Arc quirk:** Transactions sent from an EOA to its own address with non-empty `data` are rejected at network level ("External transactions to internal accounts cannot include data"). Memos and other calldata must be embedded in contract function parameters rather than sent as a self-call.
-
 ---
 
 ## Features
@@ -81,14 +77,6 @@ The Arc Stablecoin DApp showcases production-grade stablecoin patterns that team
 - Employer creates cliff + linear vesting schedules
 - Employee claims vested tokens on-demand
 - Employer can revoke unvested portion at any time
-
-### Batch Transfer
-- Send USDC or EURC to multiple wallets in **one on-chain call**
-- Only **2 MetaMask confirmations** per token (approve + `batchTransfer`) regardless of recipient count
-- Groups mixed USDC/EURC rows by token; checks existing allowance and skips approval if already sufficient
-- Optional **on-chain memo** — passed as a `string` to `batchTransfer()` and emitted in the `BatchExecuted` event; visible on ArcScan with no extra transaction
-- Live **USDC and EURC balance display** with per-token "insufficient" warning when batch total exceeds available balance
-- Step-by-step progress UI with ArcScan transaction links for every confirmation
 
 ### Cross-chain Transfers (CCTP v2)
 - Initiate `depositForBurnWithHook()` from Arc Testnet to Ethereum / Base / Arbitrum Sepolia
@@ -153,8 +141,7 @@ Browser (React + viem)
              ├─ Arc Testnet (Chain 5042002)
              │       ├─ ConditionalEscrow.sol
              │       ├─ PayrollVesting.sol
-             │       ├─ CrosschainEscrow.sol  → TokenMessengerV2.depositForBurnWithHook()
-             │       └─ BatchTransfer.sol     → approve + batchTransfer(recipients, amounts, memo)
+             │       └─ CrosschainEscrow.sol → TokenMessengerV2.depositForBurnWithHook()
              │
              └─ Destination Chain (Sepolia / Arbitrum Sepolia)
                      ├─ MessageTransmitterV2.receiveMessage()

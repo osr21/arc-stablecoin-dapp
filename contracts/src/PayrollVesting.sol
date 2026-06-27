@@ -33,8 +33,6 @@ contract PayrollVesting {
         bool revoked;
     }
 
-    address public owner;
-
     mapping(uint256 => Schedule) public schedules;
     uint256 public nextId;
 
@@ -42,7 +40,6 @@ contract PayrollVesting {
     mapping(address => bool) public allowedTokens;
 
     constructor() {
-        owner = msg.sender;
         // Arc Testnet USDC (native gas token wrapped as ERC-20)
         allowedTokens[0x3600000000000000000000000000000000000000] = true;
         // Arc Testnet EURC
@@ -97,7 +94,10 @@ contract PayrollVesting {
         // startTime = 0 would make elapsed ≈ 1.7 billion seconds → instantly fully vested.
         require(startTime > 0, "Zero startTime");
 
-        IERC20(token).transferFrom(msg.sender, address(this), totalAmount);
+        require(
+            IERC20(token).transferFrom(msg.sender, address(this), totalAmount),
+            "TransferFrom failed"
+        );
 
         id = nextId++;
         schedules[id] = Schedule({
@@ -155,7 +155,10 @@ contract PayrollVesting {
         require(claimable > 0, "Nothing to claim");
 
         schedules[id].amountClaimed += claimable;
-        IERC20(schedules[id].token).transfer(schedules[id].beneficiary, claimable);
+        require(
+            IERC20(schedules[id].token).transfer(schedules[id].beneficiary, claimable),
+            "Transfer failed"
+        );
 
         emit TokensClaimed(id, schedules[id].beneficiary, claimable, schedules[id].amountClaimed);
     }
@@ -179,8 +182,8 @@ contract PayrollVesting {
         // Prevent beneficiary from double-claiming after revoke pays them out.
         s.amountClaimed = vested;
 
-        if (unclaimed > 0) IERC20(s.token).transfer(s.beneficiary, unclaimed);
-        if (unvested  > 0) IERC20(s.token).transfer(s.employer,    unvested);
+        if (unclaimed > 0) require(IERC20(s.token).transfer(s.beneficiary, unclaimed), "Transfer to beneficiary failed");
+        if (unvested  > 0) require(IERC20(s.token).transfer(s.employer,    unvested),  "Transfer to employer failed");
 
         emit ScheduleRevoked(id, s.employer, unvested);
     }

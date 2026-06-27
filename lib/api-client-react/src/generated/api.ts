@@ -21,6 +21,10 @@ import type {
 
 import type {
   ActivityItem,
+  Agent,
+  AgentActivityInput,
+  AgentInput,
+  AgentStatusInput,
   CctpAttestation,
   CrosschainStatusUpdate,
   CrosschainTransfer,
@@ -30,11 +34,29 @@ import type {
   EscrowDisputeInput,
   EscrowInput,
   EscrowReleaseInput,
+  FXForward,
+  FXForwardCancelInput,
+  FXForwardFundInput,
+  FXForwardInput,
+  FXForwardSettleInput,
   GetDashboardActivityParams,
+  HTLCClaimInput,
+  HTLCRefundInput,
+  HTLCRelayInput,
+  HTLCSwap,
+  HTLCSwapInput,
   HealthStatus,
+  ListAgentsParams,
   ListCrosschainTransfersParams,
   ListEscrowsParams,
+  ListFxForwardsParams,
+  ListHtlcSwapsParams,
+  ListSplitsParams,
   ListVestingSchedulesParams,
+  Split,
+  SplitDeactivateInput,
+  SplitDistributeInput,
+  SplitInput,
   VestingClaimInput,
   VestingSchedule,
   VestingScheduleInput,
@@ -1430,5 +1452,1653 @@ export const useX402Send = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getX402SendMutationOptions(options));
+    }
+
+export const getListFxForwardsUrl = (params?: ListFxForwardsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/fx-forwards?${stringifiedParams}` : `/api/fx-forwards`
+}
+
+/**
+ * @summary List FX forward contracts
+ */
+export const listFxForwards = async (params?: ListFxForwardsParams, options?: RequestInit): Promise<FXForward[]> => {
+
+  return customFetch<FXForward[]>(getListFxForwardsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListFxForwardsQueryKey = (params?: ListFxForwardsParams,) => {
+    return [
+    `/api/fx-forwards`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListFxForwardsQueryOptions = <TData = Awaited<ReturnType<typeof listFxForwards>>, TError = ErrorType<unknown>>(params?: ListFxForwardsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listFxForwards>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListFxForwardsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listFxForwards>>> = ({ signal }) => listFxForwards(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listFxForwards>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListFxForwardsQueryResult = NonNullable<Awaited<ReturnType<typeof listFxForwards>>>
+export type ListFxForwardsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List FX forward contracts
+ */
+
+export function useListFxForwards<TData = Awaited<ReturnType<typeof listFxForwards>>, TError = ErrorType<unknown>>(
+ params?: ListFxForwardsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listFxForwards>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListFxForwardsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateFxForwardUrl = () => {
+
+
+
+
+  return `/api/fx-forwards`
+}
+
+/**
+ * @summary Record a new FX forward
+ */
+export const createFxForward = async (fXForwardInput: FXForwardInput, options?: RequestInit): Promise<FXForward> => {
+
+  return customFetch<FXForward>(getCreateFxForwardUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      fXForwardInput,)
+  }
+);}
+
+
+
+
+export const getCreateFxForwardMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFxForward>>, TError,{data: BodyType<FXForwardInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createFxForward>>, TError,{data: BodyType<FXForwardInput>}, TContext> => {
+
+const mutationKey = ['createFxForward'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createFxForward>>, {data: BodyType<FXForwardInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createFxForward(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateFxForwardMutationResult = NonNullable<Awaited<ReturnType<typeof createFxForward>>>
+    export type CreateFxForwardMutationBody = BodyType<FXForwardInput>
+    export type CreateFxForwardMutationError = ErrorType<void>
+
+    /**
+ * @summary Record a new FX forward
+ */
+export const useCreateFxForward = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createFxForward>>, TError,{data: BodyType<FXForwardInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createFxForward>>,
+        TError,
+        {data: BodyType<FXForwardInput>},
+        TContext
+      > => {
+      return useMutation(getCreateFxForwardMutationOptions(options));
+    }
+
+export const getGetFxForwardUrl = (id: number,) => {
+
+
+
+
+  return `/api/fx-forwards/${id}`
+}
+
+/**
+ * @summary Get FX forward by ID
+ */
+export const getFxForward = async (id: number, options?: RequestInit): Promise<FXForward> => {
+
+  return customFetch<FXForward>(getGetFxForwardUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetFxForwardQueryKey = (id: number,) => {
+    return [
+    `/api/fx-forwards/${id}`
+    ] as const;
+    }
+
+
+export const getGetFxForwardQueryOptions = <TData = Awaited<ReturnType<typeof getFxForward>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFxForward>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetFxForwardQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getFxForward>>> = ({ signal }) => getFxForward(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getFxForward>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetFxForwardQueryResult = NonNullable<Awaited<ReturnType<typeof getFxForward>>>
+export type GetFxForwardQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get FX forward by ID
+ */
+
+export function useGetFxForward<TData = Awaited<ReturnType<typeof getFxForward>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getFxForward>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetFxForwardQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getFundFxForwardUrl = (id: number,) => {
+
+
+
+
+  return `/api/fx-forwards/${id}/fund`
+}
+
+/**
+ * @summary Record partyB funding the forward with EURC
+ */
+export const fundFxForward = async (id: number,
+    fXForwardFundInput: FXForwardFundInput, options?: RequestInit): Promise<FXForward> => {
+
+  return customFetch<FXForward>(getFundFxForwardUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      fXForwardFundInput,)
+  }
+);}
+
+
+
+
+export const getFundFxForwardMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof fundFxForward>>, TError,{id: number;data: BodyType<FXForwardFundInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof fundFxForward>>, TError,{id: number;data: BodyType<FXForwardFundInput>}, TContext> => {
+
+const mutationKey = ['fundFxForward'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof fundFxForward>>, {id: number;data: BodyType<FXForwardFundInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  fundFxForward(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type FundFxForwardMutationResult = NonNullable<Awaited<ReturnType<typeof fundFxForward>>>
+    export type FundFxForwardMutationBody = BodyType<FXForwardFundInput>
+    export type FundFxForwardMutationError = ErrorType<void>
+
+    /**
+ * @summary Record partyB funding the forward with EURC
+ */
+export const useFundFxForward = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof fundFxForward>>, TError,{id: number;data: BodyType<FXForwardFundInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof fundFxForward>>,
+        TError,
+        {id: number;data: BodyType<FXForwardFundInput>},
+        TContext
+      > => {
+      return useMutation(getFundFxForwardMutationOptions(options));
+    }
+
+export const getSettleFxForwardUrl = (id: number,) => {
+
+
+
+
+  return `/api/fx-forwards/${id}/settle`
+}
+
+/**
+ * @summary Record settlement of the forward at maturity
+ */
+export const settleFxForward = async (id: number,
+    fXForwardSettleInput: FXForwardSettleInput, options?: RequestInit): Promise<FXForward> => {
+
+  return customFetch<FXForward>(getSettleFxForwardUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      fXForwardSettleInput,)
+  }
+);}
+
+
+
+
+export const getSettleFxForwardMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof settleFxForward>>, TError,{id: number;data: BodyType<FXForwardSettleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof settleFxForward>>, TError,{id: number;data: BodyType<FXForwardSettleInput>}, TContext> => {
+
+const mutationKey = ['settleFxForward'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof settleFxForward>>, {id: number;data: BodyType<FXForwardSettleInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  settleFxForward(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SettleFxForwardMutationResult = NonNullable<Awaited<ReturnType<typeof settleFxForward>>>
+    export type SettleFxForwardMutationBody = BodyType<FXForwardSettleInput>
+    export type SettleFxForwardMutationError = ErrorType<void>
+
+    /**
+ * @summary Record settlement of the forward at maturity
+ */
+export const useSettleFxForward = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof settleFxForward>>, TError,{id: number;data: BodyType<FXForwardSettleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof settleFxForward>>,
+        TError,
+        {id: number;data: BodyType<FXForwardSettleInput>},
+        TContext
+      > => {
+      return useMutation(getSettleFxForwardMutationOptions(options));
+    }
+
+export const getCancelFxForwardUrl = (id: number,) => {
+
+
+
+
+  return `/api/fx-forwards/${id}/cancel`
+}
+
+/**
+ * @summary Record cancellation of an unfunded forward
+ */
+export const cancelFxForward = async (id: number,
+    fXForwardCancelInput: FXForwardCancelInput, options?: RequestInit): Promise<FXForward> => {
+
+  return customFetch<FXForward>(getCancelFxForwardUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      fXForwardCancelInput,)
+  }
+);}
+
+
+
+
+export const getCancelFxForwardMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelFxForward>>, TError,{id: number;data: BodyType<FXForwardCancelInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelFxForward>>, TError,{id: number;data: BodyType<FXForwardCancelInput>}, TContext> => {
+
+const mutationKey = ['cancelFxForward'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelFxForward>>, {id: number;data: BodyType<FXForwardCancelInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  cancelFxForward(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelFxForwardMutationResult = NonNullable<Awaited<ReturnType<typeof cancelFxForward>>>
+    export type CancelFxForwardMutationBody = BodyType<FXForwardCancelInput>
+    export type CancelFxForwardMutationError = ErrorType<void>
+
+    /**
+ * @summary Record cancellation of an unfunded forward
+ */
+export const useCancelFxForward = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelFxForward>>, TError,{id: number;data: BodyType<FXForwardCancelInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelFxForward>>,
+        TError,
+        {id: number;data: BodyType<FXForwardCancelInput>},
+        TContext
+      > => {
+      return useMutation(getCancelFxForwardMutationOptions(options));
+    }
+
+export const getListHtlcSwapsUrl = (params?: ListHtlcSwapsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/htlc?${stringifiedParams}` : `/api/htlc`
+}
+
+/**
+ * @summary List HTLC swaps
+ */
+export const listHtlcSwaps = async (params?: ListHtlcSwapsParams, options?: RequestInit): Promise<HTLCSwap[]> => {
+
+  return customFetch<HTLCSwap[]>(getListHtlcSwapsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListHtlcSwapsQueryKey = (params?: ListHtlcSwapsParams,) => {
+    return [
+    `/api/htlc`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListHtlcSwapsQueryOptions = <TData = Awaited<ReturnType<typeof listHtlcSwaps>>, TError = ErrorType<unknown>>(params?: ListHtlcSwapsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listHtlcSwaps>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListHtlcSwapsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listHtlcSwaps>>> = ({ signal }) => listHtlcSwaps(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listHtlcSwaps>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListHtlcSwapsQueryResult = NonNullable<Awaited<ReturnType<typeof listHtlcSwaps>>>
+export type ListHtlcSwapsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List HTLC swaps
+ */
+
+export function useListHtlcSwaps<TData = Awaited<ReturnType<typeof listHtlcSwaps>>, TError = ErrorType<unknown>>(
+ params?: ListHtlcSwapsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listHtlcSwaps>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListHtlcSwapsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateHtlcSwapUrl = () => {
+
+
+
+
+  return `/api/htlc`
+}
+
+/**
+ * @summary Record a new HTLC swap
+ */
+export const createHtlcSwap = async (hTLCSwapInput: HTLCSwapInput, options?: RequestInit): Promise<HTLCSwap> => {
+
+  return customFetch<HTLCSwap>(getCreateHtlcSwapUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      hTLCSwapInput,)
+  }
+);}
+
+
+
+
+export const getCreateHtlcSwapMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createHtlcSwap>>, TError,{data: BodyType<HTLCSwapInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createHtlcSwap>>, TError,{data: BodyType<HTLCSwapInput>}, TContext> => {
+
+const mutationKey = ['createHtlcSwap'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createHtlcSwap>>, {data: BodyType<HTLCSwapInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createHtlcSwap(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateHtlcSwapMutationResult = NonNullable<Awaited<ReturnType<typeof createHtlcSwap>>>
+    export type CreateHtlcSwapMutationBody = BodyType<HTLCSwapInput>
+    export type CreateHtlcSwapMutationError = ErrorType<void>
+
+    /**
+ * @summary Record a new HTLC swap
+ */
+export const useCreateHtlcSwap = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createHtlcSwap>>, TError,{data: BodyType<HTLCSwapInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createHtlcSwap>>,
+        TError,
+        {data: BodyType<HTLCSwapInput>},
+        TContext
+      > => {
+      return useMutation(getCreateHtlcSwapMutationOptions(options));
+    }
+
+export const getGetHtlcSwapUrl = (id: number,) => {
+
+
+
+
+  return `/api/htlc/${id}`
+}
+
+/**
+ * @summary Get HTLC swap by ID
+ */
+export const getHtlcSwap = async (id: number, options?: RequestInit): Promise<HTLCSwap> => {
+
+  return customFetch<HTLCSwap>(getGetHtlcSwapUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetHtlcSwapQueryKey = (id: number,) => {
+    return [
+    `/api/htlc/${id}`
+    ] as const;
+    }
+
+
+export const getGetHtlcSwapQueryOptions = <TData = Awaited<ReturnType<typeof getHtlcSwap>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHtlcSwap>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetHtlcSwapQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getHtlcSwap>>> = ({ signal }) => getHtlcSwap(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getHtlcSwap>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetHtlcSwapQueryResult = NonNullable<Awaited<ReturnType<typeof getHtlcSwap>>>
+export type GetHtlcSwapQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get HTLC swap by ID
+ */
+
+export function useGetHtlcSwap<TData = Awaited<ReturnType<typeof getHtlcSwap>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getHtlcSwap>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetHtlcSwapQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getClaimHtlcSwapUrl = (id: number,) => {
+
+
+
+
+  return `/api/htlc/${id}/claim`
+}
+
+/**
+ * @summary Record a claim on an HTLC swap (reveals preimage)
+ */
+export const claimHtlcSwap = async (id: number,
+    hTLCClaimInput: HTLCClaimInput, options?: RequestInit): Promise<HTLCSwap> => {
+
+  return customFetch<HTLCSwap>(getClaimHtlcSwapUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      hTLCClaimInput,)
+  }
+);}
+
+
+
+
+export const getClaimHtlcSwapMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof claimHtlcSwap>>, TError,{id: number;data: BodyType<HTLCClaimInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof claimHtlcSwap>>, TError,{id: number;data: BodyType<HTLCClaimInput>}, TContext> => {
+
+const mutationKey = ['claimHtlcSwap'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof claimHtlcSwap>>, {id: number;data: BodyType<HTLCClaimInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  claimHtlcSwap(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClaimHtlcSwapMutationResult = NonNullable<Awaited<ReturnType<typeof claimHtlcSwap>>>
+    export type ClaimHtlcSwapMutationBody = BodyType<HTLCClaimInput>
+    export type ClaimHtlcSwapMutationError = ErrorType<void>
+
+    /**
+ * @summary Record a claim on an HTLC swap (reveals preimage)
+ */
+export const useClaimHtlcSwap = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof claimHtlcSwap>>, TError,{id: number;data: BodyType<HTLCClaimInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof claimHtlcSwap>>,
+        TError,
+        {id: number;data: BodyType<HTLCClaimInput>},
+        TContext
+      > => {
+      return useMutation(getClaimHtlcSwapMutationOptions(options));
+    }
+
+export const getRefundHtlcSwapUrl = (id: number,) => {
+
+
+
+
+  return `/api/htlc/${id}/refund`
+}
+
+/**
+ * @summary Record a refund on an expired HTLC swap
+ */
+export const refundHtlcSwap = async (id: number,
+    hTLCRefundInput: HTLCRefundInput, options?: RequestInit): Promise<HTLCSwap> => {
+
+  return customFetch<HTLCSwap>(getRefundHtlcSwapUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      hTLCRefundInput,)
+  }
+);}
+
+
+
+
+export const getRefundHtlcSwapMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refundHtlcSwap>>, TError,{id: number;data: BodyType<HTLCRefundInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refundHtlcSwap>>, TError,{id: number;data: BodyType<HTLCRefundInput>}, TContext> => {
+
+const mutationKey = ['refundHtlcSwap'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refundHtlcSwap>>, {id: number;data: BodyType<HTLCRefundInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  refundHtlcSwap(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefundHtlcSwapMutationResult = NonNullable<Awaited<ReturnType<typeof refundHtlcSwap>>>
+    export type RefundHtlcSwapMutationBody = BodyType<HTLCRefundInput>
+    export type RefundHtlcSwapMutationError = ErrorType<void>
+
+    /**
+ * @summary Record a refund on an expired HTLC swap
+ */
+export const useRefundHtlcSwap = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refundHtlcSwap>>, TError,{id: number;data: BodyType<HTLCRefundInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refundHtlcSwap>>,
+        TError,
+        {id: number;data: BodyType<HTLCRefundInput>},
+        TContext
+      > => {
+      return useMutation(getRefundHtlcSwapMutationOptions(options));
+    }
+
+export const getRelayHtlcSwapUrl = (id: number,) => {
+
+
+
+
+  return `/api/htlc/${id}/relay`
+}
+
+/**
+ * @summary Record CCTP attestation relay on destination chain (crosschain_cctp mode only)
+ */
+export const relayHtlcSwap = async (id: number,
+    hTLCRelayInput: HTLCRelayInput, options?: RequestInit): Promise<HTLCSwap> => {
+
+  return customFetch<HTLCSwap>(getRelayHtlcSwapUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      hTLCRelayInput,)
+  }
+);}
+
+
+
+
+export const getRelayHtlcSwapMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof relayHtlcSwap>>, TError,{id: number;data: BodyType<HTLCRelayInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof relayHtlcSwap>>, TError,{id: number;data: BodyType<HTLCRelayInput>}, TContext> => {
+
+const mutationKey = ['relayHtlcSwap'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof relayHtlcSwap>>, {id: number;data: BodyType<HTLCRelayInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  relayHtlcSwap(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RelayHtlcSwapMutationResult = NonNullable<Awaited<ReturnType<typeof relayHtlcSwap>>>
+    export type RelayHtlcSwapMutationBody = BodyType<HTLCRelayInput>
+    export type RelayHtlcSwapMutationError = ErrorType<void>
+
+    /**
+ * @summary Record CCTP attestation relay on destination chain (crosschain_cctp mode only)
+ */
+export const useRelayHtlcSwap = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof relayHtlcSwap>>, TError,{id: number;data: BodyType<HTLCRelayInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof relayHtlcSwap>>,
+        TError,
+        {id: number;data: BodyType<HTLCRelayInput>},
+        TContext
+      > => {
+      return useMutation(getRelayHtlcSwapMutationOptions(options));
+    }
+
+export const getListAgentsUrl = (params?: ListAgentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/agents?${stringifiedParams}` : `/api/agents`
+}
+
+/**
+ * @summary List registered agents
+ */
+export const listAgents = async (params?: ListAgentsParams, options?: RequestInit): Promise<Agent[]> => {
+
+  return customFetch<Agent[]>(getListAgentsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAgentsQueryKey = (params?: ListAgentsParams,) => {
+    return [
+    `/api/agents`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAgentsQueryOptions = <TData = Awaited<ReturnType<typeof listAgents>>, TError = ErrorType<unknown>>(params?: ListAgentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAgents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAgentsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAgents>>> = ({ signal }) => listAgents(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAgents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAgentsQueryResult = NonNullable<Awaited<ReturnType<typeof listAgents>>>
+export type ListAgentsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List registered agents
+ */
+
+export function useListAgents<TData = Awaited<ReturnType<typeof listAgents>>, TError = ErrorType<unknown>>(
+ params?: ListAgentsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAgents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAgentsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateAgentUrl = () => {
+
+
+
+
+  return `/api/agents`
+}
+
+/**
+ * @summary Register a new agent identity (ERC-8004)
+ */
+export const createAgent = async (agentInput: AgentInput, options?: RequestInit): Promise<Agent> => {
+
+  return customFetch<Agent>(getCreateAgentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      agentInput,)
+  }
+);}
+
+
+
+
+export const getCreateAgentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgent>>, TError,{data: BodyType<AgentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAgent>>, TError,{data: BodyType<AgentInput>}, TContext> => {
+
+const mutationKey = ['createAgent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAgent>>, {data: BodyType<AgentInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAgent(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAgentMutationResult = NonNullable<Awaited<ReturnType<typeof createAgent>>>
+    export type CreateAgentMutationBody = BodyType<AgentInput>
+    export type CreateAgentMutationError = ErrorType<void>
+
+    /**
+ * @summary Register a new agent identity (ERC-8004)
+ */
+export const useCreateAgent = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgent>>, TError,{data: BodyType<AgentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAgent>>,
+        TError,
+        {data: BodyType<AgentInput>},
+        TContext
+      > => {
+      return useMutation(getCreateAgentMutationOptions(options));
+    }
+
+export const getGetAgentUrl = (id: number,) => {
+
+
+
+
+  return `/api/agents/${id}`
+}
+
+/**
+ * @summary Get agent by DB id
+ */
+export const getAgent = async (id: number, options?: RequestInit): Promise<Agent> => {
+
+  return customFetch<Agent>(getGetAgentUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAgentQueryKey = (id: number,) => {
+    return [
+    `/api/agents/${id}`
+    ] as const;
+    }
+
+
+export const getGetAgentQueryOptions = <TData = Awaited<ReturnType<typeof getAgent>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAgentQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAgent>>> = ({ signal }) => getAgent(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAgent>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAgentQueryResult = NonNullable<Awaited<ReturnType<typeof getAgent>>>
+export type GetAgentQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get agent by DB id
+ */
+
+export function useGetAgent<TData = Awaited<ReturnType<typeof getAgent>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAgentQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getRecordAgentActivityUrl = (id: number,) => {
+
+
+
+
+  return `/api/agents/${id}/activity`
+}
+
+/**
+ * @summary Record an economic activity for an agent (updates volume + reputation)
+ */
+export const recordAgentActivity = async (id: number,
+    agentActivityInput: AgentActivityInput, options?: RequestInit): Promise<Agent> => {
+
+  return customFetch<Agent>(getRecordAgentActivityUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      agentActivityInput,)
+  }
+);}
+
+
+
+
+export const getRecordAgentActivityMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordAgentActivity>>, TError,{id: number;data: BodyType<AgentActivityInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof recordAgentActivity>>, TError,{id: number;data: BodyType<AgentActivityInput>}, TContext> => {
+
+const mutationKey = ['recordAgentActivity'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordAgentActivity>>, {id: number;data: BodyType<AgentActivityInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  recordAgentActivity(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecordAgentActivityMutationResult = NonNullable<Awaited<ReturnType<typeof recordAgentActivity>>>
+    export type RecordAgentActivityMutationBody = BodyType<AgentActivityInput>
+    export type RecordAgentActivityMutationError = ErrorType<void>
+
+    /**
+ * @summary Record an economic activity for an agent (updates volume + reputation)
+ */
+export const useRecordAgentActivity = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordAgentActivity>>, TError,{id: number;data: BodyType<AgentActivityInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof recordAgentActivity>>,
+        TError,
+        {id: number;data: BodyType<AgentActivityInput>},
+        TContext
+      > => {
+      return useMutation(getRecordAgentActivityMutationOptions(options));
+    }
+
+export const getUpdateAgentStatusUrl = (id: number,) => {
+
+
+
+
+  return `/api/agents/${id}/status`
+}
+
+/**
+ * @summary Update agent status (owner only)
+ */
+export const updateAgentStatus = async (id: number,
+    agentStatusInput: AgentStatusInput, options?: RequestInit): Promise<Agent> => {
+
+  return customFetch<Agent>(getUpdateAgentStatusUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      agentStatusInput,)
+  }
+);}
+
+
+
+
+export const getUpdateAgentStatusMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAgentStatus>>, TError,{id: number;data: BodyType<AgentStatusInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAgentStatus>>, TError,{id: number;data: BodyType<AgentStatusInput>}, TContext> => {
+
+const mutationKey = ['updateAgentStatus'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAgentStatus>>, {id: number;data: BodyType<AgentStatusInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAgentStatus(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAgentStatusMutationResult = NonNullable<Awaited<ReturnType<typeof updateAgentStatus>>>
+    export type UpdateAgentStatusMutationBody = BodyType<AgentStatusInput>
+    export type UpdateAgentStatusMutationError = ErrorType<void>
+
+    /**
+ * @summary Update agent status (owner only)
+ */
+export const useUpdateAgentStatus = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAgentStatus>>, TError,{id: number;data: BodyType<AgentStatusInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAgentStatus>>,
+        TError,
+        {id: number;data: BodyType<AgentStatusInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateAgentStatusMutationOptions(options));
+    }
+
+export const getListSplitsUrl = (params?: ListSplitsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/splits?${stringifiedParams}` : `/api/splits`
+}
+
+/**
+ * @summary List payment splits
+ */
+export const listSplits = async (params?: ListSplitsParams, options?: RequestInit): Promise<Split[]> => {
+
+  return customFetch<Split[]>(getListSplitsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSplitsQueryKey = (params?: ListSplitsParams,) => {
+    return [
+    `/api/splits`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSplitsQueryOptions = <TData = Awaited<ReturnType<typeof listSplits>>, TError = ErrorType<unknown>>(params?: ListSplitsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSplits>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSplitsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSplits>>> = ({ signal }) => listSplits(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSplits>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSplitsQueryResult = NonNullable<Awaited<ReturnType<typeof listSplits>>>
+export type ListSplitsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List payment splits
+ */
+
+export function useListSplits<TData = Awaited<ReturnType<typeof listSplits>>, TError = ErrorType<unknown>>(
+ params?: ListSplitsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSplits>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSplitsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateSplitUrl = () => {
+
+
+
+
+  return `/api/splits`
+}
+
+/**
+ * @summary Create a new fixed-share payment split
+ */
+export const createSplit = async (splitInput: SplitInput, options?: RequestInit): Promise<Split> => {
+
+  return customFetch<Split>(getCreateSplitUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      splitInput,)
+  }
+);}
+
+
+
+
+export const getCreateSplitMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSplit>>, TError,{data: BodyType<SplitInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSplit>>, TError,{data: BodyType<SplitInput>}, TContext> => {
+
+const mutationKey = ['createSplit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSplit>>, {data: BodyType<SplitInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSplit(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSplitMutationResult = NonNullable<Awaited<ReturnType<typeof createSplit>>>
+    export type CreateSplitMutationBody = BodyType<SplitInput>
+    export type CreateSplitMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a new fixed-share payment split
+ */
+export const useCreateSplit = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSplit>>, TError,{data: BodyType<SplitInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSplit>>,
+        TError,
+        {data: BodyType<SplitInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSplitMutationOptions(options));
+    }
+
+export const getGetSplitUrl = (id: number,) => {
+
+
+
+
+  return `/api/splits/${id}`
+}
+
+/**
+ * @summary Get split by DB id (includes distribution history)
+ */
+export const getSplit = async (id: number, options?: RequestInit): Promise<Split> => {
+
+  return customFetch<Split>(getGetSplitUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSplitQueryKey = (id: number,) => {
+    return [
+    `/api/splits/${id}`
+    ] as const;
+    }
+
+
+export const getGetSplitQueryOptions = <TData = Awaited<ReturnType<typeof getSplit>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSplit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSplitQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSplit>>> = ({ signal }) => getSplit(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSplit>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSplitQueryResult = NonNullable<Awaited<ReturnType<typeof getSplit>>>
+export type GetSplitQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get split by DB id (includes distribution history)
+ */
+
+export function useGetSplit<TData = Awaited<ReturnType<typeof getSplit>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSplit>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSplitQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getDistributeSplitUrl = (id: number,) => {
+
+
+
+
+  return `/api/splits/${id}/distribute`
+}
+
+/**
+ * @summary Record a distribution event for a split
+ */
+export const distributeSplit = async (id: number,
+    splitDistributeInput: SplitDistributeInput, options?: RequestInit): Promise<Split> => {
+
+  return customFetch<Split>(getDistributeSplitUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      splitDistributeInput,)
+  }
+);}
+
+
+
+
+export const getDistributeSplitMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof distributeSplit>>, TError,{id: number;data: BodyType<SplitDistributeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof distributeSplit>>, TError,{id: number;data: BodyType<SplitDistributeInput>}, TContext> => {
+
+const mutationKey = ['distributeSplit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof distributeSplit>>, {id: number;data: BodyType<SplitDistributeInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  distributeSplit(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DistributeSplitMutationResult = NonNullable<Awaited<ReturnType<typeof distributeSplit>>>
+    export type DistributeSplitMutationBody = BodyType<SplitDistributeInput>
+    export type DistributeSplitMutationError = ErrorType<void>
+
+    /**
+ * @summary Record a distribution event for a split
+ */
+export const useDistributeSplit = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof distributeSplit>>, TError,{id: number;data: BodyType<SplitDistributeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof distributeSplit>>,
+        TError,
+        {id: number;data: BodyType<SplitDistributeInput>},
+        TContext
+      > => {
+      return useMutation(getDistributeSplitMutationOptions(options));
+    }
+
+export const getDeactivateSplitUrl = (id: number,) => {
+
+
+
+
+  return `/api/splits/${id}/deactivate`
+}
+
+/**
+ * @summary Deactivate a split (creator only)
+ */
+export const deactivateSplit = async (id: number,
+    splitDeactivateInput: SplitDeactivateInput, options?: RequestInit): Promise<Split> => {
+
+  return customFetch<Split>(getDeactivateSplitUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      splitDeactivateInput,)
+  }
+);}
+
+
+
+
+export const getDeactivateSplitMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateSplit>>, TError,{id: number;data: BodyType<SplitDeactivateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deactivateSplit>>, TError,{id: number;data: BodyType<SplitDeactivateInput>}, TContext> => {
+
+const mutationKey = ['deactivateSplit'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deactivateSplit>>, {id: number;data: BodyType<SplitDeactivateInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  deactivateSplit(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeactivateSplitMutationResult = NonNullable<Awaited<ReturnType<typeof deactivateSplit>>>
+    export type DeactivateSplitMutationBody = BodyType<SplitDeactivateInput>
+    export type DeactivateSplitMutationError = ErrorType<void>
+
+    /**
+ * @summary Deactivate a split (creator only)
+ */
+export const useDeactivateSplit = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deactivateSplit>>, TError,{id: number;data: BodyType<SplitDeactivateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deactivateSplit>>,
+        TError,
+        {id: number;data: BodyType<SplitDeactivateInput>},
+        TContext
+      > => {
+      return useMutation(getDeactivateSplitMutationOptions(options));
     }
 

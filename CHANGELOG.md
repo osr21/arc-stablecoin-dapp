@@ -6,60 +6,6 @@ All notable changes to the Arc Stablecoin DApp are documented here.
 
 ## [Unreleased]
 
-### Batch Transfer (June 2026)
-
-Added a **Batch Transfer** primitive — send USDC or EURC to multiple wallets in a single on-chain call, paying all recipients with only 2 MetaMask confirmations regardless of how many there are.
-
-#### Smart contract — `BatchTransfer.sol`
-
-Deployed and source-verified on Arc Testnet at [`0x76d5dd51ad28D607cD8804dc5230cAE93403eD3d`](https://testnet.arcscan.app/address/0x76d5dd51ad28D607cD8804dc5230cAE93403eD3d).
-
-```solidity
-function batchTransfer(
-    address token,
-    address[] calldata recipients,
-    uint256[] calldata amounts,
-    string  calldata memo
-) external;
-```
-
-Flow:
-1. Caller calls `token.approve(batchTransfer, totalAmount)`
-2. Caller calls `batchTransfer(token, recipients, amounts, memo)` — the contract pulls the exact total from the caller and distributes to each recipient in one pass
-
-The optional `memo` string is emitted in the `BatchExecuted` event and stored in the transaction's event log — no separate transaction or confirmation required.
-
-```solidity
-event BatchExecuted(
-    address indexed sender,
-    address indexed token,
-    uint256 totalAmount,
-    uint256 count,
-    string  memo
-);
-```
-
-The contract is source-verified on ArcScan, so all event fields (`totalAmount`, `count`, `memo`) are decoded and displayed by name on every transaction's Logs tab.
-
-#### Batch Transfer UI (`/batch`)
-
-- **Recipient table** with per-row token selection (USDC or EURC) and a global token switcher
-- **Mixed batches**: rows are grouped by token; each group gets its own approve + batchTransfer pair
-- **Allowance check**: if the contract already has sufficient allowance, the Approve step is skipped automatically
-- **On-chain memo**: free-text field embedded in the `batchTransfer()` call — visible on ArcScan without a separate transaction
-- **Live balance display**: fetches USDC and EURC balances on wallet connect and after every successful send; shows per-token "insufficient" warning when batch total exceeds available balance
-- **Step-by-step progress** with state icons and ArcScan links for every transaction
-
-#### Arc Testnet network quirk
-
-Arc Testnet rejects any transaction sent from an EOA to its own address when `data` is non-empty:
-
-> *"External transactions to internal accounts cannot include data"*
-
-This is a consensus-level rule — not a MetaMask or RPC issue. The original design sent an on-chain memo as a self-call with calldata. After hitting this error, the approach was changed: the memo is now a parameter of the contract function itself and stored in the event log, bypassing the restriction entirely.
-
----
-
 ### Security — Smart Contract Audit & Fixes (June 2026)
 
 A full security audit was conducted across all four contracts: `ConditionalEscrow`, `PayrollVesting`, `CrosschainEscrow`, and `TimeLockHook`. Five vulnerabilities were identified and patched before redeployment.
@@ -97,12 +43,11 @@ All Arc Testnet contracts and TimeLockHook contracts were redeployed and source-
 
 #### Arc Testnet (Chain ID 5042002)
 
-| Contract | Address |
-|----------|---------|
+| Contract | New Address |
+|----------|-------------|
 | ConditionalEscrow | [`0x34733fbbC101F2244Df03508170893013528004e`](https://testnet.arcscan.app/address/0x34733fbbC101F2244Df03508170893013528004e) |
 | PayrollVesting | [`0x113F24249b0521d7288E52D12AE869d5903E6143`](https://testnet.arcscan.app/address/0x113F24249b0521d7288E52D12AE869d5903E6143) |
 | CrosschainEscrow | [`0x1e0AaD16aaBFe906987D70A00783E9ab67954aFF`](https://testnet.arcscan.app/address/0x1e0AaD16aaBFe906987D70A00783E9ab67954aFF) |
-| BatchTransfer | [`0x76d5dd51ad28D607cD8804dc5230cAE93403eD3d`](https://testnet.arcscan.app/address/0x76d5dd51ad28D607cD8804dc5230cAE93403eD3d) |
 
 #### Ethereum Sepolia
 

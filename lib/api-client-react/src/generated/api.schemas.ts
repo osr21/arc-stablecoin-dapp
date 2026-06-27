@@ -383,6 +383,399 @@ export interface X402TransferReceipt {
   status: X402TransferReceiptStatus;
 }
 
+export type FXForwardStatus = typeof FXForwardStatus[keyof typeof FXForwardStatus];
+
+
+export const FXForwardStatus = {
+  created: 'created',
+  funded: 'funded',
+  settled: 'settled',
+  cancelled: 'cancelled',
+} as const;
+
+export interface FXForward {
+  id: number;
+  /** Address depositing USDC; receives EURC at maturity */
+  partyA: string;
+  /** Address depositing EURC; receives USDC at maturity */
+  partyB: string;
+  /** USDC amount in raw 6-decimal base units */
+  usdcAmount: string;
+  /** EURC amount in raw 6-decimal base units */
+  eurcAmount: string;
+  /**
+     * Implied FX rate — usdcAmount * 1e6 / eurcAmount (USDC per EURC scaled)
+     * @nullable
+     */
+  impliedRate?: string | null;
+  /** Unix timestamp when settlement is allowed */
+  maturity: number;
+  /** Unix timestamp by which partyB must deposit EURC */
+  fundingDeadline: number;
+  status: FXForwardStatus;
+  contractAddress: string;
+  /** Creation transaction hash */
+  txHash: string;
+  /**
+     * PartyB funding transaction hash
+     * @nullable
+     */
+  fundTxHash?: string | null;
+  /**
+     * Settlement transaction hash
+     * @nullable
+     */
+  settleTxHash?: string | null;
+  /**
+     * Cancellation transaction hash
+     * @nullable
+     */
+  cancelTxHash?: string | null;
+  /**
+     * On-chain forward ID from the contract
+     * @nullable
+     */
+  onChainId?: number | null;
+  chainId: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface FXForwardInput {
+  partyA: string;
+  partyB: string;
+  usdcAmount: string;
+  eurcAmount: string;
+  maturity: number;
+  fundingDeadline: number;
+  contractAddress: string;
+  txHash: string;
+  chainId?: number;
+  onChainId?: number;
+}
+
+export interface FXForwardFundInput {
+  txHash: string;
+  caller?: string;
+}
+
+export interface FXForwardSettleInput {
+  txHash: string;
+}
+
+export interface FXForwardCancelInput {
+  txHash: string;
+  reason?: string;
+}
+
+export type HTLCSwapToken = typeof HTLCSwapToken[keyof typeof HTLCSwapToken];
+
+
+export const HTLCSwapToken = {
+  USDC: 'USDC',
+  EURC: 'EURC',
+} as const;
+
+export type HTLCSwapStatus = typeof HTLCSwapStatus[keyof typeof HTLCSwapStatus];
+
+
+export const HTLCSwapStatus = {
+  active: 'active',
+  claimed: 'claimed',
+  relayed: 'relayed',
+  refunded: 'refunded',
+} as const;
+
+/**
+ * single_chain = tokens stay on Arc; crosschain_cctp = claim triggers depositForBurn via CCTP
+ * @nullable
+ */
+export type HTLCSwapSwapMode = typeof HTLCSwapSwapMode[keyof typeof HTLCSwapSwapMode] | null;
+
+
+export const HTLCSwapSwapMode = {
+  single_chain: 'single_chain',
+  crosschain_cctp: 'crosschain_cctp',
+} as const;
+
+export interface HTLCSwap {
+  id: number;
+  /** Address that locked tokens; can refund after timelock */
+  depositor: string;
+  /** Single-chain: address that claims here. Crosschain CCTP: for display only — actual recipient is mintRecipient on dest chain. */
+  recipient: string;
+  token: HTLCSwapToken;
+  /** Token amount in raw 6-decimal base units */
+  amount: string;
+  /** keccak256(abi.encode(preimage)) — computed off-chain by depositor */
+  hashlock: string;
+  /** Unix timestamp after which depositor can refund */
+  timelock: number;
+  status: HTLCSwapStatus;
+  /**
+     * Revealed preimage (bytes32 hex); null until claimed
+     * @nullable
+     */
+  preimage?: string | null;
+  /**
+     * Claim transaction hash (also triggers CCTP burn for crosschain mode)
+     * @nullable
+     */
+  claimTxHash?: string | null;
+  /**
+     * Refund transaction hash
+     * @nullable
+     */
+  refundTxHash?: string | null;
+  contractAddress: string;
+  /** Creation transaction hash */
+  txHash: string;
+  /**
+     * On-chain HTLC ID from the contract
+     * @nullable
+     */
+  onChainId?: number | null;
+  chainId: number;
+  /**
+     * single_chain = tokens stay on Arc; crosschain_cctp = claim triggers depositForBurn via CCTP
+     * @nullable
+     */
+  swapMode?: HTLCSwapSwapMode;
+  /**
+     * CCTP destination domain (0=Eth Sepolia, 3=Arb Sepolia, 6=Base Sepolia). Null for single-chain.
+     * @nullable
+     */
+  destinationDomain?: number | null;
+  /**
+     * bytes32 hex of the USDC recipient on the destination chain. Null for single-chain.
+     * @nullable
+     */
+  mintRecipient?: string | null;
+  /**
+     * Circle attestation fee in raw base units. Null for single-chain.
+     * @nullable
+     */
+  maxFee?: string | null;
+  /**
+     * CCTP finality threshold: 2000=finalized, 1000=fast. Null for single-chain.
+     * @nullable
+     */
+  minFinalityThreshold?: number | null;
+  /**
+     * Tx hash of the CCTP attestation relay on the destination chain. Null until relayed.
+     * @nullable
+     */
+  relayTxHash?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type HTLCSwapInputToken = typeof HTLCSwapInputToken[keyof typeof HTLCSwapInputToken];
+
+
+export const HTLCSwapInputToken = {
+  USDC: 'USDC',
+  EURC: 'EURC',
+} as const;
+
+export type HTLCSwapInputSwapMode = typeof HTLCSwapInputSwapMode[keyof typeof HTLCSwapInputSwapMode];
+
+
+export const HTLCSwapInputSwapMode = {
+  single_chain: 'single_chain',
+  crosschain_cctp: 'crosschain_cctp',
+} as const;
+
+export interface HTLCSwapInput {
+  depositor: string;
+  recipient: string;
+  token: HTLCSwapInputToken;
+  amount: string;
+  /** keccak256(abi.encode(preimage)) as 0x-prefixed hex bytes32 */
+  hashlock: string;
+  timelock: number;
+  contractAddress: string;
+  txHash: string;
+  chainId?: number;
+  onChainId?: number;
+  swapMode?: HTLCSwapInputSwapMode;
+  destinationDomain?: number;
+  /** bytes32 hex of recipient on destination chain */
+  mintRecipient?: string;
+  maxFee?: string;
+  minFinalityThreshold?: number;
+}
+
+export interface HTLCClaimInput {
+  txHash: string;
+  /** The secret bytes32 value that hashes to hashlock */
+  preimage: string;
+}
+
+export interface HTLCRefundInput {
+  txHash: string;
+}
+
+export interface HTLCRelayInput {
+  /** Tx hash of the CCTP attestation relay call on the destination chain */
+  txHash: string;
+}
+
+export type AgentAgentType = typeof AgentAgentType[keyof typeof AgentAgentType];
+
+
+export const AgentAgentType = {
+  'api-consumer': 'api-consumer',
+  'market-maker': 'market-maker',
+  'data-provider': 'data-provider',
+  orchestrator: 'orchestrator',
+  custom: 'custom',
+} as const;
+
+export type AgentStatus = typeof AgentStatus[keyof typeof AgentStatus];
+
+
+export const AgentStatus = {
+  active: 'active',
+  suspended: 'suspended',
+  deactivated: 'deactivated',
+} as const;
+
+export interface Agent {
+  id?: number;
+  onChainId?: number;
+  owner?: string;
+  name?: string;
+  agentType?: AgentAgentType;
+  metadataUri?: string;
+  status?: AgentStatus;
+  /** Cumulative USDC transacted in raw 6-decimal base units */
+  totalVolume?: string;
+  txCount?: number;
+  /** 0-100 score computed from txCount and totalVolume */
+  reputationScore?: number;
+  contractAddress?: string;
+  txHash?: string;
+  chainId?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type AgentInputAgentType = typeof AgentInputAgentType[keyof typeof AgentInputAgentType];
+
+
+export const AgentInputAgentType = {
+  'api-consumer': 'api-consumer',
+  'market-maker': 'market-maker',
+  'data-provider': 'data-provider',
+  orchestrator: 'orchestrator',
+  custom: 'custom',
+} as const;
+
+export interface AgentInput {
+  /** Wallet address that owns this agent identity */
+  owner: string;
+  /** Human-readable agent name */
+  name: string;
+  agentType: AgentInputAgentType;
+  /** IPFS or HTTPS URI for agent metadata JSON */
+  metadataUri?: string;
+  /** AgentRegistry contract address */
+  contractAddress: string;
+  /** registerAgent() transaction hash */
+  txHash: string;
+  /** Returned agentId from the contract event */
+  onChainId?: number;
+  chainId?: number;
+}
+
+export interface AgentActivityInput {
+  /** USDC amount in raw 6-decimal base units */
+  amount: string;
+  /** recordActivity() transaction hash */
+  txHash: string;
+  /** Address that called recordActivity */
+  caller: string;
+}
+
+export type AgentStatusInputStatus = typeof AgentStatusInputStatus[keyof typeof AgentStatusInputStatus];
+
+
+export const AgentStatusInputStatus = {
+  active: 'active',
+  suspended: 'suspended',
+  deactivated: 'deactivated',
+} as const;
+
+export interface AgentStatusInput {
+  status: AgentStatusInputStatus;
+}
+
+export type SplitToken = typeof SplitToken[keyof typeof SplitToken];
+
+
+export const SplitToken = {
+  USDC: 'USDC',
+  EURC: 'EURC',
+} as const;
+
+export interface Split {
+  id?: number;
+  onChainId?: number;
+  creator?: string;
+  token?: SplitToken;
+  recipients?: string[];
+  /** Basis points per recipient; must sum to 10000 */
+  shares?: number[];
+  description?: string;
+  /** Cumulative raw base units distributed */
+  totalDistributed?: string;
+  active?: boolean;
+  contractAddress?: string;
+  txHash?: string;
+  chainId?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type SplitInputToken = typeof SplitInputToken[keyof typeof SplitInputToken];
+
+
+export const SplitInputToken = {
+  USDC: 'USDC',
+  EURC: 'EURC',
+} as const;
+
+export interface SplitInput {
+  /** Address that created the split */
+  creator: string;
+  token: SplitInputToken;
+  /** 2-20 recipient addresses */
+  recipients: string[];
+  /** Basis points per recipient; must sum to 10000 */
+  shares: number[];
+  description?: string;
+  /** SplitPayment contract address */
+  contractAddress: string;
+  /** createSplit() transaction hash */
+  txHash: string;
+  onChainId?: number;
+  chainId?: number;
+}
+
+export interface SplitDistributeInput {
+  /** USDC/EURC amount in raw 6-decimal base units */
+  amount: string;
+  /** distribute() transaction hash */
+  txHash: string;
+  /** Address that called distribute */
+  distributor: string;
+}
+
+export interface SplitDeactivateInput {
+  txHash: string;
+}
+
 export type ListEscrowsParams = {
 /**
  * Filter by depositor or beneficiary address
@@ -444,5 +837,64 @@ export const ListCrosschainTransfersStatus = {
 
 export type GetDashboardActivityParams = {
 limit?: number;
+};
+
+export type ListFxForwardsParams = {
+/**
+ * Filter by partyA or partyB address
+ */
+address?: string;
+status?: ListFxForwardsStatus;
+};
+
+export type ListFxForwardsStatus = typeof ListFxForwardsStatus[keyof typeof ListFxForwardsStatus];
+
+
+export const ListFxForwardsStatus = {
+  created: 'created',
+  funded: 'funded',
+  settled: 'settled',
+  cancelled: 'cancelled',
+} as const;
+
+export type ListHtlcSwapsParams = {
+/**
+ * Filter by depositor or recipient address
+ */
+address?: string;
+status?: ListHtlcSwapsStatus;
+};
+
+export type ListHtlcSwapsStatus = typeof ListHtlcSwapsStatus[keyof typeof ListHtlcSwapsStatus];
+
+
+export const ListHtlcSwapsStatus = {
+  active: 'active',
+  claimed: 'claimed',
+  refunded: 'refunded',
+} as const;
+
+export type ListAgentsParams = {
+/**
+ * Filter by owner address
+ */
+owner?: string;
+status?: ListAgentsStatus;
+};
+
+export type ListAgentsStatus = typeof ListAgentsStatus[keyof typeof ListAgentsStatus];
+
+
+export const ListAgentsStatus = {
+  active: 'active',
+  suspended: 'suspended',
+  deactivated: 'deactivated',
+} as const;
+
+export type ListSplitsParams = {
+/**
+ * Filter by creator address
+ */
+creator?: string;
 };
 

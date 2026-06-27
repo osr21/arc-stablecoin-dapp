@@ -5,7 +5,7 @@ import { CONTRACT_ADDRESSES } from "../lib/contracts";
 
 const contracts = [
   {
-    name: "ConditionalEscrow.sol",
+    name: "ConditionalEscrow",
     address: CONTRACT_ADDRESSES.CONDITIONAL_ESCROW,
     chain: "Arc Testnet",
     type: "Time-based + dispute resolution escrow",
@@ -13,7 +13,7 @@ const contracts = [
     scanBase: "https://testnet.arcscan.app",
   },
   {
-    name: "PayrollVesting.sol",
+    name: "PayrollVesting",
     address: CONTRACT_ADDRESSES.PAYROLL_VESTING,
     chain: "Arc Testnet",
     type: "Cliff + linear vesting in USDC / EURC",
@@ -21,12 +21,52 @@ const contracts = [
     scanBase: "https://testnet.arcscan.app",
   },
   {
-    name: "CrosschainEscrow.sol",
+    name: "CrosschainEscrow",
     address: CONTRACT_ADDRESSES.CROSSCHAIN_ESCROW,
     chain: "Arc Testnet",
     type: "CCTP v2 depositForBurnWithHook wrapper",
     description: "initiateConditionalTransfer · hookData · encodeHookData",
     scanBase: "https://testnet.arcscan.app",
+  },
+  {
+    name: "FXForward",
+    address: CONTRACT_ADDRESSES.FX_FORWARD,
+    chain: "Arc Testnet",
+    type: "On-chain USDC/EURC FX forward contract",
+    description: "createForward · fund · settle · cancel · impliedRate",
+    scanBase: "https://testnet.arcscan.app",
+  },
+  {
+    name: "CrosschainAtomicHTLC",
+    address: CONTRACT_ADDRESSES.CROSSCHAIN_ATOMIC_HTLC,
+    chain: "Arc Testnet",
+    type: "CCTP-powered HTLC — claim burns USDC via depositForBurn()",
+    description: "createHTLC · claim (burns+mints via CCTP) · refund · addressToBytes32",
+    scanBase: "https://testnet.arcscan.app",
+  },
+  {
+    name: "AgentRegistry",
+    address: CONTRACT_ADDRESSES.AGENT_REGISTRY,
+    chain: "Arc Testnet",
+    type: "ERC-8004 on-chain agent identity & reputation",
+    description: "registerAgent · recordActivity · getReputationScore · validate · setStatus",
+    scanBase: "https://testnet.arcscan.app",
+  },
+  {
+    name: "SplitPayment",
+    address: CONTRACT_ADDRESSES.SPLIT_PAYMENT,
+    chain: "Arc Testnet",
+    type: "Fixed-share USDC/EURC fan-out distribution",
+    description: "createSplit · distribute · previewDistribution · deactivate",
+    scanBase: "https://testnet.arcscan.app",
+  },
+  {
+    name: "SimpleHTLC",
+    address: "0x10ad359b96b61ee5a01fad2ba459b9d2b24b2da1",
+    chain: "Ethereum Sepolia",
+    type: "Counterparty HTLC for Arc→Sepolia atomic swaps",
+    description: "createHTLC · claim · refund · verifyPreimage",
+    scanBase: "https://sepolia.etherscan.io",
   },
 ];
 

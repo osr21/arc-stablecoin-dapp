@@ -464,3 +464,646 @@ export const X402SendResponse = zod.object({
 })
 
 
+/**
+ * @summary List FX forward contracts
+ */
+export const ListFxForwardsQueryParams = zod.object({
+  "address": zod.coerce.string().optional().describe('Filter by partyA or partyB address'),
+  "status": zod.enum(['created', 'funded', 'settled', 'cancelled']).optional()
+})
+
+export const ListFxForwardsResponseItem = zod.object({
+  "id": zod.number(),
+  "partyA": zod.string().describe('Address depositing USDC; receives EURC at maturity'),
+  "partyB": zod.string().describe('Address depositing EURC; receives USDC at maturity'),
+  "usdcAmount": zod.string().describe('USDC amount in raw 6-decimal base units'),
+  "eurcAmount": zod.string().describe('EURC amount in raw 6-decimal base units'),
+  "impliedRate": zod.string().nullish().describe('Implied FX rate — usdcAmount \* 1e6 \/ eurcAmount (USDC per EURC scaled)'),
+  "maturity": zod.number().describe('Unix timestamp when settlement is allowed'),
+  "fundingDeadline": zod.number().describe('Unix timestamp by which partyB must deposit EURC'),
+  "status": zod.enum(['created', 'funded', 'settled', 'cancelled']),
+  "contractAddress": zod.string(),
+  "txHash": zod.string().describe('Creation transaction hash'),
+  "fundTxHash": zod.string().nullish().describe('PartyB funding transaction hash'),
+  "settleTxHash": zod.string().nullish().describe('Settlement transaction hash'),
+  "cancelTxHash": zod.string().nullish().describe('Cancellation transaction hash'),
+  "onChainId": zod.number().nullish().describe('On-chain forward ID from the contract'),
+  "chainId": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})
+export const ListFxForwardsResponse = zod.array(ListFxForwardsResponseItem)
+
+
+/**
+ * @summary Record a new FX forward
+ */
+export const CreateFxForwardBody = zod.object({
+  "partyA": zod.string(),
+  "partyB": zod.string(),
+  "usdcAmount": zod.string(),
+  "eurcAmount": zod.string(),
+  "maturity": zod.number(),
+  "fundingDeadline": zod.number(),
+  "contractAddress": zod.string(),
+  "txHash": zod.string(),
+  "chainId": zod.number().optional(),
+  "onChainId": zod.number().optional()
+})
+
+
+/**
+ * @summary Get FX forward by ID
+ */
+export const GetFxForwardParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetFxForwardResponse = zod.object({
+  "id": zod.number(),
+  "partyA": zod.string().describe('Address depositing USDC; receives EURC at maturity'),
+  "partyB": zod.string().describe('Address depositing EURC; receives USDC at maturity'),
+  "usdcAmount": zod.string().describe('USDC amount in raw 6-decimal base units'),
+  "eurcAmount": zod.string().describe('EURC amount in raw 6-decimal base units'),
+  "impliedRate": zod.string().nullish().describe('Implied FX rate — usdcAmount \* 1e6 \/ eurcAmount (USDC per EURC scaled)'),
+  "maturity": zod.number().describe('Unix timestamp when settlement is allowed'),
+  "fundingDeadline": zod.number().describe('Unix timestamp by which partyB must deposit EURC'),
+  "status": zod.enum(['created', 'funded', 'settled', 'cancelled']),
+  "contractAddress": zod.string(),
+  "txHash": zod.string().describe('Creation transaction hash'),
+  "fundTxHash": zod.string().nullish().describe('PartyB funding transaction hash'),
+  "settleTxHash": zod.string().nullish().describe('Settlement transaction hash'),
+  "cancelTxHash": zod.string().nullish().describe('Cancellation transaction hash'),
+  "onChainId": zod.number().nullish().describe('On-chain forward ID from the contract'),
+  "chainId": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Record partyB funding the forward with EURC
+ */
+export const FundFxForwardParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const FundFxForwardBody = zod.object({
+  "txHash": zod.string(),
+  "caller": zod.string().optional()
+})
+
+export const FundFxForwardResponse = zod.object({
+  "id": zod.number(),
+  "partyA": zod.string().describe('Address depositing USDC; receives EURC at maturity'),
+  "partyB": zod.string().describe('Address depositing EURC; receives USDC at maturity'),
+  "usdcAmount": zod.string().describe('USDC amount in raw 6-decimal base units'),
+  "eurcAmount": zod.string().describe('EURC amount in raw 6-decimal base units'),
+  "impliedRate": zod.string().nullish().describe('Implied FX rate — usdcAmount \* 1e6 \/ eurcAmount (USDC per EURC scaled)'),
+  "maturity": zod.number().describe('Unix timestamp when settlement is allowed'),
+  "fundingDeadline": zod.number().describe('Unix timestamp by which partyB must deposit EURC'),
+  "status": zod.enum(['created', 'funded', 'settled', 'cancelled']),
+  "contractAddress": zod.string(),
+  "txHash": zod.string().describe('Creation transaction hash'),
+  "fundTxHash": zod.string().nullish().describe('PartyB funding transaction hash'),
+  "settleTxHash": zod.string().nullish().describe('Settlement transaction hash'),
+  "cancelTxHash": zod.string().nullish().describe('Cancellation transaction hash'),
+  "onChainId": zod.number().nullish().describe('On-chain forward ID from the contract'),
+  "chainId": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Record settlement of the forward at maturity
+ */
+export const SettleFxForwardParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SettleFxForwardBody = zod.object({
+  "txHash": zod.string()
+})
+
+export const SettleFxForwardResponse = zod.object({
+  "id": zod.number(),
+  "partyA": zod.string().describe('Address depositing USDC; receives EURC at maturity'),
+  "partyB": zod.string().describe('Address depositing EURC; receives USDC at maturity'),
+  "usdcAmount": zod.string().describe('USDC amount in raw 6-decimal base units'),
+  "eurcAmount": zod.string().describe('EURC amount in raw 6-decimal base units'),
+  "impliedRate": zod.string().nullish().describe('Implied FX rate — usdcAmount \* 1e6 \/ eurcAmount (USDC per EURC scaled)'),
+  "maturity": zod.number().describe('Unix timestamp when settlement is allowed'),
+  "fundingDeadline": zod.number().describe('Unix timestamp by which partyB must deposit EURC'),
+  "status": zod.enum(['created', 'funded', 'settled', 'cancelled']),
+  "contractAddress": zod.string(),
+  "txHash": zod.string().describe('Creation transaction hash'),
+  "fundTxHash": zod.string().nullish().describe('PartyB funding transaction hash'),
+  "settleTxHash": zod.string().nullish().describe('Settlement transaction hash'),
+  "cancelTxHash": zod.string().nullish().describe('Cancellation transaction hash'),
+  "onChainId": zod.number().nullish().describe('On-chain forward ID from the contract'),
+  "chainId": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Record cancellation of an unfunded forward
+ */
+export const CancelFxForwardParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CancelFxForwardBody = zod.object({
+  "txHash": zod.string(),
+  "reason": zod.string().optional()
+})
+
+export const CancelFxForwardResponse = zod.object({
+  "id": zod.number(),
+  "partyA": zod.string().describe('Address depositing USDC; receives EURC at maturity'),
+  "partyB": zod.string().describe('Address depositing EURC; receives USDC at maturity'),
+  "usdcAmount": zod.string().describe('USDC amount in raw 6-decimal base units'),
+  "eurcAmount": zod.string().describe('EURC amount in raw 6-decimal base units'),
+  "impliedRate": zod.string().nullish().describe('Implied FX rate — usdcAmount \* 1e6 \/ eurcAmount (USDC per EURC scaled)'),
+  "maturity": zod.number().describe('Unix timestamp when settlement is allowed'),
+  "fundingDeadline": zod.number().describe('Unix timestamp by which partyB must deposit EURC'),
+  "status": zod.enum(['created', 'funded', 'settled', 'cancelled']),
+  "contractAddress": zod.string(),
+  "txHash": zod.string().describe('Creation transaction hash'),
+  "fundTxHash": zod.string().nullish().describe('PartyB funding transaction hash'),
+  "settleTxHash": zod.string().nullish().describe('Settlement transaction hash'),
+  "cancelTxHash": zod.string().nullish().describe('Cancellation transaction hash'),
+  "onChainId": zod.number().nullish().describe('On-chain forward ID from the contract'),
+  "chainId": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary List HTLC swaps
+ */
+export const ListHtlcSwapsQueryParams = zod.object({
+  "address": zod.coerce.string().optional().describe('Filter by depositor or recipient address'),
+  "status": zod.enum(['active', 'claimed', 'refunded']).optional()
+})
+
+export const ListHtlcSwapsResponseItem = zod.object({
+  "id": zod.number(),
+  "depositor": zod.string().describe('Address that locked tokens; can refund after timelock'),
+  "recipient": zod.string().describe('Single-chain: address that claims here. Crosschain CCTP: for display only — actual recipient is mintRecipient on dest chain.'),
+  "token": zod.enum(['USDC', 'EURC']),
+  "amount": zod.string().describe('Token amount in raw 6-decimal base units'),
+  "hashlock": zod.string().describe('keccak256(abi.encode(preimage)) — computed off-chain by depositor'),
+  "timelock": zod.number().describe('Unix timestamp after which depositor can refund'),
+  "status": zod.enum(['active', 'claimed', 'relayed', 'refunded']),
+  "preimage": zod.string().nullish().describe('Revealed preimage (bytes32 hex); null until claimed'),
+  "claimTxHash": zod.string().nullish().describe('Claim transaction hash (also triggers CCTP burn for crosschain mode)'),
+  "refundTxHash": zod.string().nullish().describe('Refund transaction hash'),
+  "contractAddress": zod.string(),
+  "txHash": zod.string().describe('Creation transaction hash'),
+  "onChainId": zod.number().nullish().describe('On-chain HTLC ID from the contract'),
+  "chainId": zod.number(),
+  "swapMode": zod.union([zod.literal('single_chain'),zod.literal('crosschain_cctp'),zod.literal(null)]).nullish().describe('single_chain = tokens stay on Arc; crosschain_cctp = claim triggers depositForBurn via CCTP'),
+  "destinationDomain": zod.number().nullish().describe('CCTP destination domain (0=Eth Sepolia, 3=Arb Sepolia, 6=Base Sepolia). Null for single-chain.'),
+  "mintRecipient": zod.string().nullish().describe('bytes32 hex of the USDC recipient on the destination chain. Null for single-chain.'),
+  "maxFee": zod.string().nullish().describe('Circle attestation fee in raw base units. Null for single-chain.'),
+  "minFinalityThreshold": zod.number().nullish().describe('CCTP finality threshold: 2000=finalized, 1000=fast. Null for single-chain.'),
+  "relayTxHash": zod.string().nullish().describe('Tx hash of the CCTP attestation relay on the destination chain. Null until relayed.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})
+export const ListHtlcSwapsResponse = zod.array(ListHtlcSwapsResponseItem)
+
+
+/**
+ * @summary Record a new HTLC swap
+ */
+export const CreateHtlcSwapBody = zod.object({
+  "depositor": zod.string(),
+  "recipient": zod.string(),
+  "token": zod.enum(['USDC', 'EURC']),
+  "amount": zod.string(),
+  "hashlock": zod.string().describe('keccak256(abi.encode(preimage)) as 0x-prefixed hex bytes32'),
+  "timelock": zod.number(),
+  "contractAddress": zod.string(),
+  "txHash": zod.string(),
+  "chainId": zod.number().optional(),
+  "onChainId": zod.number().optional(),
+  "swapMode": zod.enum(['single_chain', 'crosschain_cctp']).optional(),
+  "destinationDomain": zod.number().optional(),
+  "mintRecipient": zod.string().optional().describe('bytes32 hex of recipient on destination chain'),
+  "maxFee": zod.string().optional(),
+  "minFinalityThreshold": zod.number().optional()
+})
+
+
+/**
+ * @summary Get HTLC swap by ID
+ */
+export const GetHtlcSwapParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetHtlcSwapResponse = zod.object({
+  "id": zod.number(),
+  "depositor": zod.string().describe('Address that locked tokens; can refund after timelock'),
+  "recipient": zod.string().describe('Single-chain: address that claims here. Crosschain CCTP: for display only — actual recipient is mintRecipient on dest chain.'),
+  "token": zod.enum(['USDC', 'EURC']),
+  "amount": zod.string().describe('Token amount in raw 6-decimal base units'),
+  "hashlock": zod.string().describe('keccak256(abi.encode(preimage)) — computed off-chain by depositor'),
+  "timelock": zod.number().describe('Unix timestamp after which depositor can refund'),
+  "status": zod.enum(['active', 'claimed', 'relayed', 'refunded']),
+  "preimage": zod.string().nullish().describe('Revealed preimage (bytes32 hex); null until claimed'),
+  "claimTxHash": zod.string().nullish().describe('Claim transaction hash (also triggers CCTP burn for crosschain mode)'),
+  "refundTxHash": zod.string().nullish().describe('Refund transaction hash'),
+  "contractAddress": zod.string(),
+  "txHash": zod.string().describe('Creation transaction hash'),
+  "onChainId": zod.number().nullish().describe('On-chain HTLC ID from the contract'),
+  "chainId": zod.number(),
+  "swapMode": zod.union([zod.literal('single_chain'),zod.literal('crosschain_cctp'),zod.literal(null)]).nullish().describe('single_chain = tokens stay on Arc; crosschain_cctp = claim triggers depositForBurn via CCTP'),
+  "destinationDomain": zod.number().nullish().describe('CCTP destination domain (0=Eth Sepolia, 3=Arb Sepolia, 6=Base Sepolia). Null for single-chain.'),
+  "mintRecipient": zod.string().nullish().describe('bytes32 hex of the USDC recipient on the destination chain. Null for single-chain.'),
+  "maxFee": zod.string().nullish().describe('Circle attestation fee in raw base units. Null for single-chain.'),
+  "minFinalityThreshold": zod.number().nullish().describe('CCTP finality threshold: 2000=finalized, 1000=fast. Null for single-chain.'),
+  "relayTxHash": zod.string().nullish().describe('Tx hash of the CCTP attestation relay on the destination chain. Null until relayed.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Record a claim on an HTLC swap (reveals preimage)
+ */
+export const ClaimHtlcSwapParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ClaimHtlcSwapBody = zod.object({
+  "txHash": zod.string(),
+  "preimage": zod.string().describe('The secret bytes32 value that hashes to hashlock')
+})
+
+export const ClaimHtlcSwapResponse = zod.object({
+  "id": zod.number(),
+  "depositor": zod.string().describe('Address that locked tokens; can refund after timelock'),
+  "recipient": zod.string().describe('Single-chain: address that claims here. Crosschain CCTP: for display only — actual recipient is mintRecipient on dest chain.'),
+  "token": zod.enum(['USDC', 'EURC']),
+  "amount": zod.string().describe('Token amount in raw 6-decimal base units'),
+  "hashlock": zod.string().describe('keccak256(abi.encode(preimage)) — computed off-chain by depositor'),
+  "timelock": zod.number().describe('Unix timestamp after which depositor can refund'),
+  "status": zod.enum(['active', 'claimed', 'relayed', 'refunded']),
+  "preimage": zod.string().nullish().describe('Revealed preimage (bytes32 hex); null until claimed'),
+  "claimTxHash": zod.string().nullish().describe('Claim transaction hash (also triggers CCTP burn for crosschain mode)'),
+  "refundTxHash": zod.string().nullish().describe('Refund transaction hash'),
+  "contractAddress": zod.string(),
+  "txHash": zod.string().describe('Creation transaction hash'),
+  "onChainId": zod.number().nullish().describe('On-chain HTLC ID from the contract'),
+  "chainId": zod.number(),
+  "swapMode": zod.union([zod.literal('single_chain'),zod.literal('crosschain_cctp'),zod.literal(null)]).nullish().describe('single_chain = tokens stay on Arc; crosschain_cctp = claim triggers depositForBurn via CCTP'),
+  "destinationDomain": zod.number().nullish().describe('CCTP destination domain (0=Eth Sepolia, 3=Arb Sepolia, 6=Base Sepolia). Null for single-chain.'),
+  "mintRecipient": zod.string().nullish().describe('bytes32 hex of the USDC recipient on the destination chain. Null for single-chain.'),
+  "maxFee": zod.string().nullish().describe('Circle attestation fee in raw base units. Null for single-chain.'),
+  "minFinalityThreshold": zod.number().nullish().describe('CCTP finality threshold: 2000=finalized, 1000=fast. Null for single-chain.'),
+  "relayTxHash": zod.string().nullish().describe('Tx hash of the CCTP attestation relay on the destination chain. Null until relayed.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Record a refund on an expired HTLC swap
+ */
+export const RefundHtlcSwapParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RefundHtlcSwapBody = zod.object({
+  "txHash": zod.string()
+})
+
+export const RefundHtlcSwapResponse = zod.object({
+  "id": zod.number(),
+  "depositor": zod.string().describe('Address that locked tokens; can refund after timelock'),
+  "recipient": zod.string().describe('Single-chain: address that claims here. Crosschain CCTP: for display only — actual recipient is mintRecipient on dest chain.'),
+  "token": zod.enum(['USDC', 'EURC']),
+  "amount": zod.string().describe('Token amount in raw 6-decimal base units'),
+  "hashlock": zod.string().describe('keccak256(abi.encode(preimage)) — computed off-chain by depositor'),
+  "timelock": zod.number().describe('Unix timestamp after which depositor can refund'),
+  "status": zod.enum(['active', 'claimed', 'relayed', 'refunded']),
+  "preimage": zod.string().nullish().describe('Revealed preimage (bytes32 hex); null until claimed'),
+  "claimTxHash": zod.string().nullish().describe('Claim transaction hash (also triggers CCTP burn for crosschain mode)'),
+  "refundTxHash": zod.string().nullish().describe('Refund transaction hash'),
+  "contractAddress": zod.string(),
+  "txHash": zod.string().describe('Creation transaction hash'),
+  "onChainId": zod.number().nullish().describe('On-chain HTLC ID from the contract'),
+  "chainId": zod.number(),
+  "swapMode": zod.union([zod.literal('single_chain'),zod.literal('crosschain_cctp'),zod.literal(null)]).nullish().describe('single_chain = tokens stay on Arc; crosschain_cctp = claim triggers depositForBurn via CCTP'),
+  "destinationDomain": zod.number().nullish().describe('CCTP destination domain (0=Eth Sepolia, 3=Arb Sepolia, 6=Base Sepolia). Null for single-chain.'),
+  "mintRecipient": zod.string().nullish().describe('bytes32 hex of the USDC recipient on the destination chain. Null for single-chain.'),
+  "maxFee": zod.string().nullish().describe('Circle attestation fee in raw base units. Null for single-chain.'),
+  "minFinalityThreshold": zod.number().nullish().describe('CCTP finality threshold: 2000=finalized, 1000=fast. Null for single-chain.'),
+  "relayTxHash": zod.string().nullish().describe('Tx hash of the CCTP attestation relay on the destination chain. Null until relayed.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Record CCTP attestation relay on destination chain (crosschain_cctp mode only)
+ */
+export const RelayHtlcSwapParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RelayHtlcSwapBody = zod.object({
+  "txHash": zod.string().describe('Tx hash of the CCTP attestation relay call on the destination chain')
+})
+
+export const RelayHtlcSwapResponse = zod.object({
+  "id": zod.number(),
+  "depositor": zod.string().describe('Address that locked tokens; can refund after timelock'),
+  "recipient": zod.string().describe('Single-chain: address that claims here. Crosschain CCTP: for display only — actual recipient is mintRecipient on dest chain.'),
+  "token": zod.enum(['USDC', 'EURC']),
+  "amount": zod.string().describe('Token amount in raw 6-decimal base units'),
+  "hashlock": zod.string().describe('keccak256(abi.encode(preimage)) — computed off-chain by depositor'),
+  "timelock": zod.number().describe('Unix timestamp after which depositor can refund'),
+  "status": zod.enum(['active', 'claimed', 'relayed', 'refunded']),
+  "preimage": zod.string().nullish().describe('Revealed preimage (bytes32 hex); null until claimed'),
+  "claimTxHash": zod.string().nullish().describe('Claim transaction hash (also triggers CCTP burn for crosschain mode)'),
+  "refundTxHash": zod.string().nullish().describe('Refund transaction hash'),
+  "contractAddress": zod.string(),
+  "txHash": zod.string().describe('Creation transaction hash'),
+  "onChainId": zod.number().nullish().describe('On-chain HTLC ID from the contract'),
+  "chainId": zod.number(),
+  "swapMode": zod.union([zod.literal('single_chain'),zod.literal('crosschain_cctp'),zod.literal(null)]).nullish().describe('single_chain = tokens stay on Arc; crosschain_cctp = claim triggers depositForBurn via CCTP'),
+  "destinationDomain": zod.number().nullish().describe('CCTP destination domain (0=Eth Sepolia, 3=Arb Sepolia, 6=Base Sepolia). Null for single-chain.'),
+  "mintRecipient": zod.string().nullish().describe('bytes32 hex of the USDC recipient on the destination chain. Null for single-chain.'),
+  "maxFee": zod.string().nullish().describe('Circle attestation fee in raw base units. Null for single-chain.'),
+  "minFinalityThreshold": zod.number().nullish().describe('CCTP finality threshold: 2000=finalized, 1000=fast. Null for single-chain.'),
+  "relayTxHash": zod.string().nullish().describe('Tx hash of the CCTP attestation relay on the destination chain. Null until relayed.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary List registered agents
+ */
+export const ListAgentsQueryParams = zod.object({
+  "owner": zod.coerce.string().optional().describe('Filter by owner address'),
+  "status": zod.enum(['active', 'suspended', 'deactivated']).optional()
+})
+
+export const ListAgentsResponseItem = zod.object({
+  "id": zod.number().optional(),
+  "onChainId": zod.number().optional(),
+  "owner": zod.string().optional(),
+  "name": zod.string().optional(),
+  "agentType": zod.enum(['api-consumer', 'market-maker', 'data-provider', 'orchestrator', 'custom']).optional(),
+  "metadataUri": zod.string().optional(),
+  "status": zod.enum(['active', 'suspended', 'deactivated']).optional(),
+  "totalVolume": zod.string().optional().describe('Cumulative USDC transacted in raw 6-decimal base units'),
+  "txCount": zod.number().optional(),
+  "reputationScore": zod.number().optional().describe('0-100 score computed from txCount and totalVolume'),
+  "contractAddress": zod.string().optional(),
+  "txHash": zod.string().optional(),
+  "chainId": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})
+export const ListAgentsResponse = zod.array(ListAgentsResponseItem)
+
+
+/**
+ * @summary Register a new agent identity (ERC-8004)
+ */
+export const CreateAgentBody = zod.object({
+  "owner": zod.string().describe('Wallet address that owns this agent identity'),
+  "name": zod.string().describe('Human-readable agent name'),
+  "agentType": zod.enum(['api-consumer', 'market-maker', 'data-provider', 'orchestrator', 'custom']),
+  "metadataUri": zod.string().optional().describe('IPFS or HTTPS URI for agent metadata JSON'),
+  "contractAddress": zod.string().describe('AgentRegistry contract address'),
+  "txHash": zod.string().describe('registerAgent() transaction hash'),
+  "onChainId": zod.number().optional().describe('Returned agentId from the contract event'),
+  "chainId": zod.number().optional()
+})
+
+
+/**
+ * @summary Get agent by DB id
+ */
+export const GetAgentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetAgentResponse = zod.object({
+  "id": zod.number().optional(),
+  "onChainId": zod.number().optional(),
+  "owner": zod.string().optional(),
+  "name": zod.string().optional(),
+  "agentType": zod.enum(['api-consumer', 'market-maker', 'data-provider', 'orchestrator', 'custom']).optional(),
+  "metadataUri": zod.string().optional(),
+  "status": zod.enum(['active', 'suspended', 'deactivated']).optional(),
+  "totalVolume": zod.string().optional().describe('Cumulative USDC transacted in raw 6-decimal base units'),
+  "txCount": zod.number().optional(),
+  "reputationScore": zod.number().optional().describe('0-100 score computed from txCount and totalVolume'),
+  "contractAddress": zod.string().optional(),
+  "txHash": zod.string().optional(),
+  "chainId": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Record an economic activity for an agent (updates volume + reputation)
+ */
+export const RecordAgentActivityParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RecordAgentActivityBody = zod.object({
+  "amount": zod.string().describe('USDC amount in raw 6-decimal base units'),
+  "txHash": zod.string().describe('recordActivity() transaction hash'),
+  "caller": zod.string().describe('Address that called recordActivity')
+})
+
+export const RecordAgentActivityResponse = zod.object({
+  "id": zod.number().optional(),
+  "onChainId": zod.number().optional(),
+  "owner": zod.string().optional(),
+  "name": zod.string().optional(),
+  "agentType": zod.enum(['api-consumer', 'market-maker', 'data-provider', 'orchestrator', 'custom']).optional(),
+  "metadataUri": zod.string().optional(),
+  "status": zod.enum(['active', 'suspended', 'deactivated']).optional(),
+  "totalVolume": zod.string().optional().describe('Cumulative USDC transacted in raw 6-decimal base units'),
+  "txCount": zod.number().optional(),
+  "reputationScore": zod.number().optional().describe('0-100 score computed from txCount and totalVolume'),
+  "contractAddress": zod.string().optional(),
+  "txHash": zod.string().optional(),
+  "chainId": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Update agent status (owner only)
+ */
+export const UpdateAgentStatusParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateAgentStatusBody = zod.object({
+  "status": zod.enum(['active', 'suspended', 'deactivated'])
+})
+
+export const UpdateAgentStatusResponse = zod.object({
+  "id": zod.number().optional(),
+  "onChainId": zod.number().optional(),
+  "owner": zod.string().optional(),
+  "name": zod.string().optional(),
+  "agentType": zod.enum(['api-consumer', 'market-maker', 'data-provider', 'orchestrator', 'custom']).optional(),
+  "metadataUri": zod.string().optional(),
+  "status": zod.enum(['active', 'suspended', 'deactivated']).optional(),
+  "totalVolume": zod.string().optional().describe('Cumulative USDC transacted in raw 6-decimal base units'),
+  "txCount": zod.number().optional(),
+  "reputationScore": zod.number().optional().describe('0-100 score computed from txCount and totalVolume'),
+  "contractAddress": zod.string().optional(),
+  "txHash": zod.string().optional(),
+  "chainId": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary List payment splits
+ */
+export const ListSplitsQueryParams = zod.object({
+  "creator": zod.coerce.string().optional().describe('Filter by creator address')
+})
+
+export const ListSplitsResponseItem = zod.object({
+  "id": zod.number().optional(),
+  "onChainId": zod.number().optional(),
+  "creator": zod.string().optional(),
+  "token": zod.enum(['USDC', 'EURC']).optional(),
+  "recipients": zod.array(zod.string()).optional(),
+  "shares": zod.array(zod.number()).optional().describe('Basis points per recipient; must sum to 10000'),
+  "description": zod.string().optional(),
+  "totalDistributed": zod.string().optional().describe('Cumulative raw base units distributed'),
+  "active": zod.boolean().optional(),
+  "contractAddress": zod.string().optional(),
+  "txHash": zod.string().optional(),
+  "chainId": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})
+export const ListSplitsResponse = zod.array(ListSplitsResponseItem)
+
+
+/**
+ * @summary Create a new fixed-share payment split
+ */
+export const CreateSplitBody = zod.object({
+  "creator": zod.string().describe('Address that created the split'),
+  "token": zod.enum(['USDC', 'EURC']),
+  "recipients": zod.array(zod.string()).describe('2-20 recipient addresses'),
+  "shares": zod.array(zod.number()).describe('Basis points per recipient; must sum to 10000'),
+  "description": zod.string().optional(),
+  "contractAddress": zod.string().describe('SplitPayment contract address'),
+  "txHash": zod.string().describe('createSplit() transaction hash'),
+  "onChainId": zod.number().optional(),
+  "chainId": zod.number().optional()
+})
+
+
+/**
+ * @summary Get split by DB id (includes distribution history)
+ */
+export const GetSplitParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetSplitResponse = zod.object({
+  "id": zod.number().optional(),
+  "onChainId": zod.number().optional(),
+  "creator": zod.string().optional(),
+  "token": zod.enum(['USDC', 'EURC']).optional(),
+  "recipients": zod.array(zod.string()).optional(),
+  "shares": zod.array(zod.number()).optional().describe('Basis points per recipient; must sum to 10000'),
+  "description": zod.string().optional(),
+  "totalDistributed": zod.string().optional().describe('Cumulative raw base units distributed'),
+  "active": zod.boolean().optional(),
+  "contractAddress": zod.string().optional(),
+  "txHash": zod.string().optional(),
+  "chainId": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Record a distribution event for a split
+ */
+export const DistributeSplitParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DistributeSplitBody = zod.object({
+  "amount": zod.string().describe('USDC\/EURC amount in raw 6-decimal base units'),
+  "txHash": zod.string().describe('distribute() transaction hash'),
+  "distributor": zod.string().describe('Address that called distribute')
+})
+
+export const DistributeSplitResponse = zod.object({
+  "id": zod.number().optional(),
+  "onChainId": zod.number().optional(),
+  "creator": zod.string().optional(),
+  "token": zod.enum(['USDC', 'EURC']).optional(),
+  "recipients": zod.array(zod.string()).optional(),
+  "shares": zod.array(zod.number()).optional().describe('Basis points per recipient; must sum to 10000'),
+  "description": zod.string().optional(),
+  "totalDistributed": zod.string().optional().describe('Cumulative raw base units distributed'),
+  "active": zod.boolean().optional(),
+  "contractAddress": zod.string().optional(),
+  "txHash": zod.string().optional(),
+  "chainId": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Deactivate a split (creator only)
+ */
+export const DeactivateSplitParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeactivateSplitBody = zod.object({
+  "txHash": zod.string()
+})
+
+export const DeactivateSplitResponse = zod.object({
+  "id": zod.number().optional(),
+  "onChainId": zod.number().optional(),
+  "creator": zod.string().optional(),
+  "token": zod.enum(['USDC', 'EURC']).optional(),
+  "recipients": zod.array(zod.string()).optional(),
+  "shares": zod.array(zod.number()).optional().describe('Basis points per recipient; must sum to 10000'),
+  "description": zod.string().optional(),
+  "totalDistributed": zod.string().optional().describe('Cumulative raw base units distributed'),
+  "active": zod.boolean().optional(),
+  "contractAddress": zod.string().optional(),
+  "txHash": zod.string().optional(),
+  "chainId": zod.number().optional(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+

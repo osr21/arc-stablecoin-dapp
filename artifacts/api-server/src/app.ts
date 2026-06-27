@@ -94,6 +94,7 @@ app.use("/api/vesting", strictLimiter);
 app.use("/api/crosschain", strictLimiter);
 app.use("/api/dashboard", strictLimiter);
 app.use("/api/keeper", strictLimiter);
+app.use("/api/x402", strictLimiter);
 
 // x402 payment gates — intercepts matching routes before they reach handlers.
 // The in-process facilitator settles USDC payments on Arc Testnet via EIP-3009.

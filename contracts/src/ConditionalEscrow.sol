@@ -36,8 +36,6 @@ contract ConditionalEscrow {
         string disputeReason;
     }
 
-    address public owner;
-
     mapping(uint256 => EscrowData) public escrows;
     uint256 public nextId;
 
@@ -45,7 +43,6 @@ contract ConditionalEscrow {
     mapping(address => bool) public allowedTokens;
 
     constructor() {
-        owner = msg.sender;
         // Arc Testnet USDC (native gas token wrapped as ERC-20)
         allowedTokens[0x3600000000000000000000000000000000000000] = true;
         // Arc Testnet EURC
@@ -111,7 +108,10 @@ contract ConditionalEscrow {
         require(amount > 0, "Zero amount");
         require(releaseTime > block.timestamp, "Release time in past");
 
-        IERC20(token).transferFrom(msg.sender, address(this), amount);
+        require(
+            IERC20(token).transferFrom(msg.sender, address(this), amount),
+            "TransferFrom failed"
+        );
 
         id = nextId++;
         escrows[id] = EscrowData({
@@ -159,7 +159,7 @@ contract ConditionalEscrow {
         }
 
         e.status = Status.Released;
-        IERC20(e.token).transfer(e.beneficiary, e.amount);
+        require(IERC20(e.token).transfer(e.beneficiary, e.amount), "Transfer failed");
 
         emit EscrowReleased(id, e.beneficiary, e.amount);
     }
@@ -172,7 +172,7 @@ contract ConditionalEscrow {
         require(block.timestamp >= e.releaseTime, "Time not expired");
 
         e.status = Status.Released;
-        IERC20(e.token).transfer(e.beneficiary, e.amount);
+        require(IERC20(e.token).transfer(e.beneficiary, e.amount), "Transfer failed");
 
         emit EscrowReleased(id, e.beneficiary, e.amount);
     }
@@ -205,12 +205,12 @@ contract ConditionalEscrow {
 
         if (toBeneficiary) {
             e.resolution = Resolution.ToBeneficiary;
-            IERC20(e.token).transfer(e.beneficiary, e.amount);
+            require(IERC20(e.token).transfer(e.beneficiary, e.amount), "Transfer failed");
             emit EscrowResolved(id, Resolution.ToBeneficiary, msg.sender);
             emit EscrowReleased(id, e.beneficiary, e.amount);
         } else {
             e.resolution = Resolution.ToDepositor;
-            IERC20(e.token).transfer(e.depositor, e.amount);
+            require(IERC20(e.token).transfer(e.depositor, e.amount), "Transfer failed");
             emit EscrowResolved(id, Resolution.ToDepositor, msg.sender);
             emit EscrowReleased(id, e.depositor, e.amount);
         }

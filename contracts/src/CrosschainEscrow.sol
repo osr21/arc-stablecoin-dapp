@@ -70,7 +70,6 @@ contract CrosschainEscrow {
         string  conditionDescription;
     }
 
-    address public owner;
     address public immutable tokenMessengerV2;
     address public immutable usdc;
 
@@ -92,7 +91,6 @@ contract CrosschainEscrow {
      * @param _usdc             USDC token address on this chain.
      */
     constructor(address _tokenMessengerV2, address _usdc) {
-        owner = msg.sender;
         tokenMessengerV2 = _tokenMessengerV2;
         usdc = _usdc;
     }
@@ -121,8 +119,14 @@ contract CrosschainEscrow {
         require(amount > 0, "Zero amount");
         require(amount > maxFee, "Amount must exceed maxFee");
 
-        IERC20(usdc).transferFrom(msg.sender, address(this), amount);
-        IERC20(usdc).approve(tokenMessengerV2, amount);
+        require(
+            IERC20(usdc).transferFrom(msg.sender, address(this), amount),
+            "TransferFrom failed"
+        );
+        require(
+            IERC20(usdc).approve(tokenMessengerV2, amount),
+            "Approve failed"
+        );
 
         bytes32 mintRecipient = bytes32(uint256(uint160(recipient)));
         bytes32 destCaller    = bytes32(0); // anyone can mint on destination

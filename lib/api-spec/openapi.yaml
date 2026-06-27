@@ -22,6 +22,14 @@ tags:
     description: Circle CCTP attestation proxy
   - name: x402
     description: Gasless USDC transfers via EIP-3009 TransferWithAuthorization
+  - name: fx-forward
+    description: On-chain EURC/USDC FX forward contracts with fixed settlement rate
+  - name: htlc
+    description: Hash Time Locked Contracts for trustless cross-chain atomic swaps
+  - name: agent
+    description: ERC-8004 on-chain agent identity registry with reputation scoring
+  - name: split
+    description: Fixed-share USDC/EURC fan-out split payment contracts
 
 paths:
   /healthz:
@@ -430,6 +438,543 @@ paths:
         "503":
           description: Payment relay not configured
 
+  /fx-forwards:
+    get:
+      operationId: listFxForwards
+      tags: [fx-forward]
+      summary: List FX forward contracts
+      parameters:
+        - in: query
+          name: address
+          schema:
+            type: string
+          description: Filter by partyA or partyB address
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [created, funded, settled, cancelled]
+      responses:
+        "200":
+          description: List of FX forwards
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FXForward"
+
+    post:
+      operationId: createFxForward
+      tags: [fx-forward]
+      summary: Record a new FX forward
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FXForwardInput"
+      responses:
+        "201":
+          description: FX forward created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FXForward"
+        "400":
+          description: Invalid input
+
+  /fx-forwards/{id}:
+    get:
+      operationId: getFxForward
+      tags: [fx-forward]
+      summary: Get FX forward by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: FX forward details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FXForward"
+        "404":
+          description: Not found
+
+  /fx-forwards/{id}/fund:
+    post:
+      operationId: fundFxForward
+      tags: [fx-forward]
+      summary: Record partyB funding the forward with EURC
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FXForwardFundInput"
+      responses:
+        "200":
+          description: Forward funded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FXForward"
+        "404":
+          description: Not found
+
+  /fx-forwards/{id}/settle:
+    post:
+      operationId: settleFxForward
+      tags: [fx-forward]
+      summary: Record settlement of the forward at maturity
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FXForwardSettleInput"
+      responses:
+        "200":
+          description: Forward settled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FXForward"
+        "404":
+          description: Not found
+
+  /fx-forwards/{id}/cancel:
+    post:
+      operationId: cancelFxForward
+      tags: [fx-forward]
+      summary: Record cancellation of an unfunded forward
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FXForwardCancelInput"
+      responses:
+        "200":
+          description: Forward cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FXForward"
+        "404":
+          description: Not found
+
+  /htlc:
+    get:
+      operationId: listHtlcSwaps
+      tags: [htlc]
+      summary: List HTLC swaps
+      parameters:
+        - in: query
+          name: address
+          schema:
+            type: string
+          description: Filter by depositor or recipient address
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, claimed, refunded]
+      responses:
+        "200":
+          description: List of HTLC swaps
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HTLCSwap"
+
+    post:
+      operationId: createHtlcSwap
+      tags: [htlc]
+      summary: Record a new HTLC swap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HTLCSwapInput"
+      responses:
+        "201":
+          description: HTLC swap created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTLCSwap"
+        "400":
+          description: Invalid input
+
+  /htlc/{id}:
+    get:
+      operationId: getHtlcSwap
+      tags: [htlc]
+      summary: Get HTLC swap by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: HTLC swap details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTLCSwap"
+        "404":
+          description: Not found
+
+  /htlc/{id}/claim:
+    post:
+      operationId: claimHtlcSwap
+      tags: [htlc]
+      summary: Record a claim on an HTLC swap (reveals preimage)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HTLCClaimInput"
+      responses:
+        "200":
+          description: HTLC claimed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTLCSwap"
+        "404":
+          description: Not found
+
+  /htlc/{id}/refund:
+    post:
+      operationId: refundHtlcSwap
+      tags: [htlc]
+      summary: Record a refund on an expired HTLC swap
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HTLCRefundInput"
+      responses:
+        "200":
+          description: HTLC refunded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTLCSwap"
+        "404":
+          description: Not found
+
+  /htlc/{id}/relay:
+    post:
+      operationId: relayHtlcSwap
+      tags: [htlc]
+      summary: Record CCTP attestation relay on destination chain (crosschain_cctp mode only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HTLCRelayInput"
+      responses:
+        "200":
+          description: HTLC relay recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTLCSwap"
+        "404":
+          description: Not found
+
+  /agents:
+    get:
+      operationId: listAgents
+      tags: [agent]
+      summary: List registered agents
+      parameters:
+        - in: query
+          name: owner
+          schema:
+            type: string
+          description: Filter by owner address
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, suspended, deactivated]
+      responses:
+        "200":
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Agent"
+
+    post:
+      operationId: createAgent
+      tags: [agent]
+      summary: Register a new agent identity (ERC-8004)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentInput"
+      responses:
+        "201":
+          description: Agent registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "400":
+          description: Invalid input
+
+  /agents/{id}:
+    get:
+      operationId: getAgent
+      tags: [agent]
+      summary: Get agent by DB id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Agent record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "404":
+          description: Not found
+
+  /agents/{id}/activity:
+    post:
+      operationId: recordAgentActivity
+      tags: [agent]
+      summary: Record an economic activity for an agent (updates volume + reputation)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentActivityInput"
+      responses:
+        "200":
+          description: Updated agent with new reputation score
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "400":
+          description: Invalid input
+        "404":
+          description: Not found
+
+  /agents/{id}/status:
+    patch:
+      operationId: updateAgentStatus
+      tags: [agent]
+      summary: Update agent status (owner only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentStatusInput"
+      responses:
+        "200":
+          description: Updated agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "404":
+          description: Not found
+
+  /splits:
+    get:
+      operationId: listSplits
+      tags: [split]
+      summary: List payment splits
+      parameters:
+        - in: query
+          name: creator
+          schema:
+            type: string
+          description: Filter by creator address
+      responses:
+        "200":
+          description: List of splits
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Split"
+
+    post:
+      operationId: createSplit
+      tags: [split]
+      summary: Create a new fixed-share payment split
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SplitInput"
+      responses:
+        "201":
+          description: Split created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Split"
+        "400":
+          description: Invalid input
+
+  /splits/{id}:
+    get:
+      operationId: getSplit
+      tags: [split]
+      summary: Get split by DB id (includes distribution history)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Split record with distributions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Split"
+        "404":
+          description: Not found
+
+  /splits/{id}/distribute:
+    post:
+      operationId: distributeSplit
+      tags: [split]
+      summary: Record a distribution event for a split
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SplitDistributeInput"
+      responses:
+        "200":
+          description: Updated split after distribution
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Split"
+        "400":
+          description: Invalid input
+        "404":
+          description: Not found
+
+  /splits/{id}/deactivate:
+    patch:
+      operationId: deactivateSplit
+      tags: [split]
+      summary: Deactivate a split (creator only)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SplitDeactivateInput"
+      responses:
+        "200":
+          description: Deactivated split
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Split"
+        "404":
+          description: Not found
+
 components:
   schemas:
     HealthStatus:
@@ -826,3 +1371,430 @@ components:
         status:
           type: string
           enum: [success]
+
+    FXForward:
+      type: object
+      required: [id, partyA, partyB, usdcAmount, eurcAmount, maturity, fundingDeadline, status, contractAddress, txHash, chainId, createdAt]
+      properties:
+        id:
+          type: integer
+        partyA:
+          type: string
+          description: Address depositing USDC; receives EURC at maturity
+        partyB:
+          type: string
+          description: Address depositing EURC; receives USDC at maturity
+        usdcAmount:
+          type: string
+          description: USDC amount in raw 6-decimal base units
+        eurcAmount:
+          type: string
+          description: EURC amount in raw 6-decimal base units
+        impliedRate:
+          type: ["string", "null"]
+          description: Implied FX rate — usdcAmount * 1e6 / eurcAmount (USDC per EURC scaled)
+        maturity:
+          type: integer
+          description: Unix timestamp when settlement is allowed
+        fundingDeadline:
+          type: integer
+          description: Unix timestamp by which partyB must deposit EURC
+        status:
+          type: string
+          enum: [created, funded, settled, cancelled]
+        contractAddress:
+          type: string
+        txHash:
+          type: string
+          description: Creation transaction hash
+        fundTxHash:
+          type: ["string", "null"]
+          description: PartyB funding transaction hash
+        settleTxHash:
+          type: ["string", "null"]
+          description: Settlement transaction hash
+        cancelTxHash:
+          type: ["string", "null"]
+          description: Cancellation transaction hash
+        onChainId:
+          type: ["integer", "null"]
+          description: On-chain forward ID from the contract
+        chainId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    FXForwardInput:
+      type: object
+      required: [partyA, partyB, usdcAmount, eurcAmount, maturity, fundingDeadline, contractAddress, txHash]
+      properties:
+        partyA:
+          type: string
+        partyB:
+          type: string
+        usdcAmount:
+          type: string
+        eurcAmount:
+          type: string
+        maturity:
+          type: integer
+        fundingDeadline:
+          type: integer
+        contractAddress:
+          type: string
+        txHash:
+          type: string
+        chainId:
+          type: integer
+        onChainId:
+          type: integer
+
+    FXForwardFundInput:
+      type: object
+      required: [txHash]
+      properties:
+        txHash:
+          type: string
+        caller:
+          type: string
+
+    FXForwardSettleInput:
+      type: object
+      required: [txHash]
+      properties:
+        txHash:
+          type: string
+
+    FXForwardCancelInput:
+      type: object
+      required: [txHash]
+      properties:
+        txHash:
+          type: string
+        reason:
+          type: string
+
+    HTLCSwap:
+      type: object
+      required: [id, depositor, recipient, token, amount, hashlock, timelock, status, contractAddress, txHash, chainId, createdAt]
+      properties:
+        id:
+          type: integer
+        depositor:
+          type: string
+          description: Address that locked tokens; can refund after timelock
+        recipient:
+          type: string
+          description: "Single-chain: address that claims here. Crosschain CCTP: for display only — actual recipient is mintRecipient on dest chain."
+        token:
+          type: string
+          enum: [USDC, EURC]
+        amount:
+          type: string
+          description: Token amount in raw 6-decimal base units
+        hashlock:
+          type: string
+          description: "keccak256(abi.encode(preimage)) — computed off-chain by depositor"
+        timelock:
+          type: integer
+          description: Unix timestamp after which depositor can refund
+        status:
+          type: string
+          enum: [active, claimed, relayed, refunded]
+        preimage:
+          type: ["string", "null"]
+          description: Revealed preimage (bytes32 hex); null until claimed
+        claimTxHash:
+          type: ["string", "null"]
+          description: Claim transaction hash (also triggers CCTP burn for crosschain mode)
+        refundTxHash:
+          type: ["string", "null"]
+          description: Refund transaction hash
+        contractAddress:
+          type: string
+        txHash:
+          type: string
+          description: Creation transaction hash
+        onChainId:
+          type: ["integer", "null"]
+          description: On-chain HTLC ID from the contract
+        chainId:
+          type: integer
+        swapMode:
+          type: ["string", "null"]
+          enum: [single_chain, crosschain_cctp, null]
+          description: "single_chain = tokens stay on Arc; crosschain_cctp = claim triggers depositForBurn via CCTP"
+        destinationDomain:
+          type: ["integer", "null"]
+          description: "CCTP destination domain (0=Eth Sepolia, 3=Arb Sepolia, 6=Base Sepolia). Null for single-chain."
+        mintRecipient:
+          type: ["string", "null"]
+          description: "bytes32 hex of the USDC recipient on the destination chain. Null for single-chain."
+        maxFee:
+          type: ["string", "null"]
+          description: "Circle attestation fee in raw base units. Null for single-chain."
+        minFinalityThreshold:
+          type: ["integer", "null"]
+          description: "CCTP finality threshold: 2000=finalized, 1000=fast. Null for single-chain."
+        relayTxHash:
+          type: ["string", "null"]
+          description: "Tx hash of the CCTP attestation relay on the destination chain. Null until relayed."
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    HTLCSwapInput:
+      type: object
+      required: [depositor, recipient, token, amount, hashlock, timelock, contractAddress, txHash]
+      properties:
+        depositor:
+          type: string
+        recipient:
+          type: string
+        token:
+          type: string
+          enum: [USDC, EURC]
+        amount:
+          type: string
+        hashlock:
+          type: string
+          description: keccak256(abi.encode(preimage)) as 0x-prefixed hex bytes32
+        timelock:
+          type: integer
+        contractAddress:
+          type: string
+        txHash:
+          type: string
+        chainId:
+          type: integer
+        onChainId:
+          type: integer
+        swapMode:
+          type: string
+          enum: [single_chain, crosschain_cctp]
+        destinationDomain:
+          type: integer
+        mintRecipient:
+          type: string
+          description: bytes32 hex of recipient on destination chain
+        maxFee:
+          type: string
+        minFinalityThreshold:
+          type: integer
+
+    HTLCClaimInput:
+      type: object
+      required: [txHash, preimage]
+      properties:
+        txHash:
+          type: string
+        preimage:
+          type: string
+          description: The secret bytes32 value that hashes to hashlock
+
+    HTLCRefundInput:
+      type: object
+      required: [txHash]
+      properties:
+        txHash:
+          type: string
+
+    HTLCRelayInput:
+      type: object
+      required: [txHash]
+      properties:
+        txHash:
+          type: string
+          description: Tx hash of the CCTP attestation relay call on the destination chain
+
+    Agent:
+      type: object
+      properties:
+        id:
+          type: integer
+        onChainId:
+          type: integer
+        owner:
+          type: string
+        name:
+          type: string
+        agentType:
+          type: string
+          enum: [api-consumer, market-maker, data-provider, orchestrator, custom]
+        metadataUri:
+          type: string
+        status:
+          type: string
+          enum: [active, suspended, deactivated]
+        totalVolume:
+          type: string
+          description: Cumulative USDC transacted in raw 6-decimal base units
+        txCount:
+          type: integer
+        reputationScore:
+          type: integer
+          description: 0-100 score computed from txCount and totalVolume
+        contractAddress:
+          type: string
+        txHash:
+          type: string
+        chainId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AgentInput:
+      type: object
+      required: [owner, name, agentType, contractAddress, txHash]
+      properties:
+        owner:
+          type: string
+          description: Wallet address that owns this agent identity
+        name:
+          type: string
+          description: Human-readable agent name
+        agentType:
+          type: string
+          enum: [api-consumer, market-maker, data-provider, orchestrator, custom]
+        metadataUri:
+          type: string
+          description: IPFS or HTTPS URI for agent metadata JSON
+        contractAddress:
+          type: string
+          description: AgentRegistry contract address
+        txHash:
+          type: string
+          description: registerAgent() transaction hash
+        onChainId:
+          type: integer
+          description: Returned agentId from the contract event
+        chainId:
+          type: integer
+
+    AgentActivityInput:
+      type: object
+      required: [amount, txHash, caller]
+      properties:
+        amount:
+          type: string
+          description: USDC amount in raw 6-decimal base units
+        txHash:
+          type: string
+          description: recordActivity() transaction hash
+        caller:
+          type: string
+          description: Address that called recordActivity
+
+    AgentStatusInput:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, suspended, deactivated]
+
+    Split:
+      type: object
+      properties:
+        id:
+          type: integer
+        onChainId:
+          type: integer
+        creator:
+          type: string
+        token:
+          type: string
+          enum: [USDC, EURC]
+        recipients:
+          type: array
+          items:
+            type: string
+        shares:
+          type: array
+          items:
+            type: integer
+          description: Basis points per recipient; must sum to 10000
+        description:
+          type: string
+        totalDistributed:
+          type: string
+          description: Cumulative raw base units distributed
+        active:
+          type: boolean
+        contractAddress:
+          type: string
+        txHash:
+          type: string
+        chainId:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SplitInput:
+      type: object
+      required: [creator, token, recipients, shares, contractAddress, txHash]
+      properties:
+        creator:
+          type: string
+          description: Address that created the split
+        token:
+          type: string
+          enum: [USDC, EURC]
+        recipients:
+          type: array
+          items:
+            type: string
+          description: 2-20 recipient addresses
+        shares:
+          type: array
+          items:
+            type: integer
+          description: Basis points per recipient; must sum to 10000
+        description:
+          type: string
+        contractAddress:
+          type: string
+          description: SplitPayment contract address
+        txHash:
+          type: string
+          description: createSplit() transaction hash
+        onChainId:
+          type: integer
+        chainId:
+          type: integer
+
+    SplitDistributeInput:
+      type: object
+      required: [amount, txHash, distributor]
+      properties:
+        amount:
+          type: string
+          description: USDC/EURC amount in raw 6-decimal base units
+        txHash:
+          type: string
+          description: distribute() transaction hash
+        distributor:
+          type: string
+          description: Address that called distribute
+
+    SplitDeactivateInput:
+      type: object
+      required: [txHash]
+      properties:
+        txHash:
+          type: string

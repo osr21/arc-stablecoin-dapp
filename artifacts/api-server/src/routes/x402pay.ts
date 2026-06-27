@@ -1,5 +1,10 @@
 import { Router } from "express";
-import { createWalletClient, createPublicClient, http, getAddress } from "viem";
+import {
+  createWalletClient,
+  createPublicClient,
+  http,
+  getAddress,
+} from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { X402SendBody } from "@workspace/api-zod";
 
@@ -33,6 +38,37 @@ const USDC_TRANSFER_AUTH_ABI = [
   },
 ] as const;
 
+// Maximum USDC value accepted per relay call — 1000 USDC (6 decimals).
+// Prevents the relay wallet from being used for arbitrarily large transfers.
+const MAX_RELAY_VALUE = 1_000_000_000n;
+
+// Memoize viem clients — building them on every HTTP request opens a new
+// connection per call and re-derives the account unnecessarily.
+// Clients are immutable once created (same key / same chain), so a module-level
+// singleton is safe.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _clients: { walletClient: any; publicClient: any } | null = null;
+
+function getClients(): { walletClient: any; publicClient: any } {
+  if (!_clients) {
+    const rawKey = process.env.DEPLOYER_PRIVATE_KEY;
+    if (!rawKey) throw new Error("DEPLOYER_PRIVATE_KEY not set");
+    const privKey = (rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`) as `0x${string}`;
+    const account = privateKeyToAccount(privKey);
+    _clients = {
+      walletClient: createWalletClient({
+        account,
+        chain: arcTestnet as any,
+        transport: http(ARC_RPC),
+      }),
+      publicClient: createPublicClient({
+        chain: arcTestnet as any,
+        transport: http(ARC_RPC),
+      }),
+    };
+  }
+  return _clients;
+}
 
 const router = Router();
 
@@ -42,33 +78,36 @@ router.post("/send", async (req, res) => {
     return res.status(400).json({ error: "Invalid request body" });
   }
 
-  const rawKey = process.env.DEPLOYER_PRIVATE_KEY;
-  if (!rawKey) {
+  if (!process.env.DEPLOYER_PRIVATE_KEY) {
     return res.status(503).json({ error: "Payment relay not configured — DEPLOYER_PRIVATE_KEY missing" });
   }
 
   const { from, to, value, validAfter, validBefore, nonce, signature } = body.data;
 
+  // Enforce relay value cap — the on-chain signature still restricts the actual
+  // transfer, but rejecting oversized requests early avoids wasted gas attempts.
+  const valueBigInt = BigInt(value);
+  if (valueBigInt > MAX_RELAY_VALUE) {
+    return res.status(400).json({
+      error: `Relay value exceeds maximum (${MAX_RELAY_VALUE} base units = 1000 USDC)`,
+    });
+  }
+
   const r = `0x${signature.slice(2, 66)}`   as `0x${string}`;
   const s = `0x${signature.slice(66, 130)}`  as `0x${string}`;
   const v = parseInt(signature.slice(130, 132), 16);
 
-  const privKey = (rawKey.startsWith("0x") ? rawKey : `0x${rawKey}`) as `0x${string}`;
-  const account = privateKeyToAccount(privKey);
-
-  const walletClient = createWalletClient({
-    account,
-    chain: arcTestnet as any,
-    transport: http(ARC_RPC),
-  });
-
-  const publicClient = createPublicClient({
-    chain: arcTestnet as any,
-    transport: http(ARC_RPC),
-  });
+  let walletClient: any;
+  let publicClient: any;
+  try {
+    ({ walletClient, publicClient } = getClients());
+  } catch (err: any) {
+    req.log.error({ err }, "x402 relay: failed to build viem clients");
+    return res.status(503).json({ error: "Payment relay not configured — DEPLOYER_PRIVATE_KEY missing" });
+  }
 
   try {
-    const txHash = await walletClient.writeContract({
+    const txHash = await (walletClient as any).writeContract({
       chain: null,
       address: USDC_ADDRESS,
       abi: USDC_TRANSFER_AUTH_ABI,
@@ -76,7 +115,7 @@ router.post("/send", async (req, res) => {
       args: [
         getAddress(from),
         getAddress(to),
-        BigInt(value),
+        valueBigInt,
         BigInt(validAfter),
         BigInt(validBefore),
         nonce as `0x${string}`,
@@ -84,6 +123,9 @@ router.post("/send", async (req, res) => {
         r,
         s,
       ],
+      // Arc Testnet: eth_estimateGas is unreliable — pass an explicit gas limit
+      // to bypass estimation entirely and avoid intermittent relay failures.
+      gas: 100_000n,
     });
 
     req.log.info({ txHash, from, to, value }, "x402 transferWithAuthorization submitted");
